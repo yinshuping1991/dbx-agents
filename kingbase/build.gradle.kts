@@ -6,6 +6,7 @@ plugins {
 dependencies {
     implementation(project(":common"))
     implementation(fileTree("libs") { include("*.jar") })
+    implementation("cn.com.kingbase:kingbase8:9.0.1.jre7")
 }
 
 kotlin {

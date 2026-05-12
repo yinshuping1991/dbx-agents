@@ -6,6 +6,7 @@ plugins {
 dependencies {
     implementation(project(":common"))
     implementation(fileTree("libs") { include("*.jar") })
+    implementation("cn.com.vastdata:vastbase-jdbc:2.11v")
 }
 
 kotlin {

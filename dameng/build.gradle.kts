@@ -6,6 +6,7 @@ plugins {
 dependencies {
     implementation(project(":common"))
     implementation(fileTree("libs") { include("*.jar") })
+    implementation("com.dameng:DmJdbcDriver18:8.1.3.140")
 }
 
 kotlin {
