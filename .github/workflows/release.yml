@@ -1,0 +1,143 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build-agents:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - run: ./gradlew shadowJar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agent-jars
+          path: "*/build/libs/dbx-agent-*.jar"
+
+  build-jre:
+    strategy:
+      matrix:
+        include:
+          - os: macos-14
+            platform: macos-aarch64
+          - os: macos-13
+            platform: macos-x64
+          - os: ubuntu-latest
+            platform: linux-x64
+          - os: ubuntu-24.04-arm
+            platform: linux-aarch64
+          - os: windows-latest
+            platform: windows-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Build minimal JRE
+        shell: bash
+        run: |
+          jlink \
+            --add-modules java.base,java.sql,java.naming,java.management \
+            --output dbx-jre \
+            --strip-debug --no-header-files --no-man-pages --compress=zip-6
+      - name: Package JRE
+        shell: bash
+        run: tar czf dbx-jre-${{ matrix.platform }}.tar.gz dbx-jre
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jre-${{ matrix.platform }}
+          path: "dbx-jre-${{ matrix.platform }}.tar.gz"
+
+  release:
+    needs: [build-agents, build-jre]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release
+          find artifacts/agent-jars -name '*.jar' -exec cp {} release/ \;
+          find artifacts -name 'dbx-jre-*.tar.gz' -exec cp {} release/ \;
+          ls -lh release/
+
+      - name: Generate agent-registry.json
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          REPO="${GITHUB_REPOSITORY}"
+
+          generate_jar_entry() {
+            local name="$1" label="$2" file="$3"
+            local sha256=$(sha256sum "$file" | cut -d' ' -f1)
+            local size=$(stat -c%s "$file")
+            local url="https://github.com/${REPO}/releases/download/${TAG}/$(basename $file)"
+            cat <<ENTRY
+              "${name}": {
+                "version": "${TAG#v}",
+                "label": "${label}",
+                "min_app_version": "0.6.0",
+                "jar": { "url": "${url}", "sha256": "${sha256}", "size": ${size} }
+              }
+          ENTRY
+          }
+
+          generate_jre_entry() {
+            local platform="$1" file="$2"
+            local sha256=$(sha256sum "$file" | cut -d' ' -f1)
+            local size=$(stat -c%s "$file")
+            local url="https://github.com/${REPO}/releases/download/${TAG}/$(basename $file)"
+            cat <<ENTRY
+                "${platform}": { "url": "${url}", "sha256": "${sha256}", "size": ${size} }
+          ENTRY
+          }
+
+          # Build platforms JSON
+          PLATFORMS=""
+          for f in release/dbx-jre-*.tar.gz; do
+            p=$(basename "$f" .tar.gz | sed 's/dbx-jre-//')
+            [ -n "$PLATFORMS" ] && PLATFORMS="${PLATFORMS},"$'\n'
+            PLATFORMS="${PLATFORMS}$(generate_jre_entry "$p" "$f")"
+          done
+
+          # Build drivers JSON
+          DAMENG=$(generate_jar_entry "dameng" "达梦 DM8" "release/dbx-agent-dameng.jar")
+          KINGBASE=$(generate_jar_entry "kingbase" "人大金仓 KingbaseES" "release/dbx-agent-kingbase.jar")
+          VASTBASE=$(generate_jar_entry "vastbase" "Vastbase" "release/dbx-agent-vastbase.jar")
+          GOLDENDB=$(generate_jar_entry "goldendb" "GoldenDB" "release/dbx-agent-goldendb.jar")
+
+          cat > release/agent-registry.json <<EOF
+          {
+            "jre": {
+              "version": "21.0.11",
+              "platforms": {
+          ${PLATFORMS}
+              }
+            },
+            "drivers": {
+          ${DAMENG},
+          ${KINGBASE},
+          ${VASTBASE},
+          ${GOLDENDB}
+            }
+          }
+          EOF
+
+          python3 -m json.tool release/agent-registry.json > /dev/null
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true
