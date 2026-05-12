@@ -78,6 +78,14 @@ class JsonRpcServer(private val agent: DatabaseAgent) {
                 params.get("sql").asString,
                 params.get("schema")?.asString
             )
+            "execute_transaction" -> {
+                val statements = gson.fromJson<List<String>>(
+                    params.get("statements"),
+                    object : com.google.gson.reflect.TypeToken<List<String>>() {}.type
+                )
+                val schema = params.get("schema")?.asString
+                agent.executeTransaction(statements, schema)
+            }
             "disconnect" -> {
                 agent.disconnect()
                 mapOf("ok" to true)

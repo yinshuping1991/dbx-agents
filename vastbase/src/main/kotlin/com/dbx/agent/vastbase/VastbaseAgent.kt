@@ -9,6 +9,7 @@ import java.sql.Types
 class VastbaseAgent : DatabaseAgent {
     private var connection: Connection? = null
 
+    override fun getConnection(): Connection? = connection
     override fun connect(params: ConnectParams) {
         Class.forName("cn.com.vastbase.Driver")
         val url = "jdbc:vastbase://${params.host}:${params.port}/${params.database}"
@@ -302,6 +303,8 @@ class VastbaseAgent : DatabaseAgent {
             }
         }
     }
+
+    override fun setSchemaSQL(schema: String): String = "SET search_path TO \"$schema\""
 
     override fun disconnect() {
         connection?.close()

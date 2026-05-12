@@ -9,6 +9,7 @@ import java.sql.Types
 class GoldendbAgent : DatabaseAgent {
     private var connection: Connection? = null
 
+    override fun getConnection(): Connection? = connection
     override fun connect(params: ConnectParams) {
         Class.forName("com.mysql.cj.jdbc.Driver")
         val url = "jdbc:mysql://${params.host}:${params.port}/${params.database}?useSSL=false&allowPublicKeyRetrieval=true"
@@ -270,6 +271,8 @@ class GoldendbAgent : DatabaseAgent {
             }
         }
     }
+
+    override fun setSchemaSQL(schema: String): String = "USE `$schema`"
 
     override fun disconnect() {
         connection?.close()

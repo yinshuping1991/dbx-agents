@@ -1,5 +1,7 @@
 package com.dbx.agent
 
+import java.sql.Connection
+
 interface DatabaseAgent {
     fun connect(params: ConnectParams)
     fun testConnection(params: ConnectParams): Boolean
@@ -12,4 +14,30 @@ interface DatabaseAgent {
     fun listTriggers(schema: String, table: String): List<TriggerInfo>
     fun executeQuery(sql: String, schema: String?): QueryResult
     fun disconnect()
+    fun getConnection(): Connection?
+    fun executeTransaction(statements: List<String>, schema: String?): QueryResult {
+        val conn = getConnection() ?: throw IllegalStateException("Not connected")
+        val savedAutoCommit = conn.autoCommit
+        conn.autoCommit = false
+        val start = System.currentTimeMillis()
+        try {
+            if (!schema.isNullOrBlank()) {
+                conn.createStatement().use { it.execute(setSchemaSQL(schema)) }
+            }
+            var totalAffected = 0L
+            for (sql in statements) {
+                conn.createStatement().use { stmt ->
+                    totalAffected += stmt.executeUpdate(sql.trim().trimEnd(';'))
+                }
+            }
+            conn.commit()
+            return QueryResult(emptyList(), emptyList(), totalAffected, System.currentTimeMillis() - start)
+        } catch (e: Exception) {
+            conn.rollback()
+            throw e
+        } finally {
+            conn.autoCommit = savedAutoCommit
+        }
+    }
+    fun setSchemaSQL(schema: String): String = "SET SCHEMA \"$schema\""
 }

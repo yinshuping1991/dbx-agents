@@ -10,6 +10,7 @@ class DamengAgent : DatabaseAgent {
 
     private var connection: Connection? = null
 
+    override fun getConnection(): Connection? = connection
     companion object {
         private const val MAX_ROWS = 10000
 

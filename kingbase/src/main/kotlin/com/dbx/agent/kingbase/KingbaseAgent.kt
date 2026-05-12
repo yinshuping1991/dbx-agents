@@ -9,6 +9,7 @@ import java.sql.Types
 class KingbaseAgent : DatabaseAgent {
     private var connection: Connection? = null
 
+    override fun getConnection(): Connection? = connection
     override fun connect(params: ConnectParams) {
         Class.forName("com.kingbase8.Driver")
         val url = "jdbc:kingbase8://${params.host}:${params.port}/${params.database}"
@@ -302,6 +303,8 @@ class KingbaseAgent : DatabaseAgent {
             }
         }
     }
+
+    override fun setSchemaSQL(schema: String): String = "SET search_path TO \"$schema\""
 
     override fun disconnect() {
         connection?.close()
