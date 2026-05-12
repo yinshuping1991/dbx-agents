@@ -54,11 +54,11 @@ data class QueryResult(
 )
 
 data class ConnectParams(
-    val host: String,
-    val port: Int,
-    val database: String,
-    val username: String,
-    val password: String
+    val host: String = "",
+    val port: Int = 0,
+    val database: String = "",
+    val username: String = "",
+    val password: String = ""
 )
 
 data class SchemaTableParams(
