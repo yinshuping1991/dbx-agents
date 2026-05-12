@@ -16,6 +16,6 @@ tasks.shadowJar {
     archiveBaseName.set("dbx-agent-kingbase")
     archiveClassifier.set("")
     manifest {
-        attributes("Main-Class" to "com.dbx.agent.kingbase.MainKt")
+        attributes("Main-Class" to "com.dbx.agent.kingbase.KingbaseAgentKt")
     }
 }

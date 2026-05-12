@@ -16,6 +16,6 @@ tasks.shadowJar {
     archiveBaseName.set("dbx-agent-dameng")
     archiveClassifier.set("")
     manifest {
-        attributes("Main-Class" to "com.dbx.agent.dameng.MainKt")
+        attributes("Main-Class" to "com.dbx.agent.dameng.DamengAgentKt")
     }
 }
