@@ -47,7 +47,7 @@ jobs:
         shell: bash
         run: |
           jlink \
-            --add-modules java.base,java.sql,java.naming,java.management \
+            --add-modules java.base,java.sql,java.sql.rowset,java.naming,java.management,java.desktop,jdk.charsets \
             --output dbx-jre \
             --strip-debug --no-header-files --no-man-pages --compress=zip-6
       - name: Package JRE
