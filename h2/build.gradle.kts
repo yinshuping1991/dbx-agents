@@ -9,6 +9,7 @@ dependencies {
     implementation("com.h2database:h2:2.3.232")
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
+    testImplementation(project(":test-support"))
 }
 
 kotlin {

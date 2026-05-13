@@ -172,23 +172,35 @@ Only use JRE 8 for drivers that require it, such as legacy Oracle 10g support. I
 
 Every JDBC agent should have at least one execution-path regression test.
 
-For agents that can run with an embedded or in-memory database, prefer a real driver test:
+For agents that can run with an embedded or in-memory database, prefer the shared behavior contract:
 
 ```kotlin
-@Test
-fun `executes statements that return result sets without SELECT prefix`() {
-    val agent = H2Agent()
-    agent.connect(ConnectParams(database = "mem:dbx-agent-call;DB_CLOSE_DELAY=-1"))
+class H2AgentTest : JdbcAgentBehaviorTest() {
+    override fun createConnectedAgent(databaseName: String): DatabaseAgent {
+        return H2Agent().apply {
+            connect(ConnectParams(database = "mem:$databaseName;DB_CLOSE_DELAY=-1"))
+        }
+    }
 
-    val result = agent.executeQuery("CALL 42", null)
+    override fun resultSetSql(): String = "CALL 42"
+    override fun expectedResultSetColumns(): List<String> = listOf("42")
+    override fun expectedResultSetRows(): List<List<Any?>> = listOf(listOf(42))
+    override fun rowsSql(rowCount: Int): String = "SELECT X FROM SYSTEM_RANGE(1, $rowCount)"
 
-    assertEquals(listOf("42"), result.columns)
-    assertEquals(listOf(listOf(42)), result.rows)
-    assertEquals(0, result.affected_rows)
-    assertFalse(result.truncated)
-    agent.disconnect()
+    override fun metadataFixtureSql(): List<String> = listOf(
+        "CREATE TABLE BETA_TABLE (ID INT PRIMARY KEY)",
+        "CREATE TABLE ALPHA_TABLE (ID INT PRIMARY KEY)",
+        "CREATE TABLE COLUMN_ORDER_SAMPLE (ID INT PRIMARY KEY, NAME VARCHAR(64), CREATED_AT TIMESTAMP)",
+    )
+
+    override fun metadataSchema(): String = "PUBLIC"
+    override fun expectedTablesInOrder(): List<String> = listOf("ALPHA_TABLE", "BETA_TABLE", "COLUMN_ORDER_SAMPLE")
+    override fun metadataColumnsTable(): String = "COLUMN_ORDER_SAMPLE"
+    override fun expectedColumnsInOrder(): List<String> = listOf("ID", "NAME", "CREATED_AT")
 }
 ```
+
+`JdbcAgentBehaviorTest` verifies non-`SELECT` result set execution, max-row truncation boundaries, transaction control statements, and stable metadata ordering.
 
 For agents that need unavailable commercial or external drivers, use `test-support`:
 

@@ -1,53 +1,41 @@
 package com.dbx.agent.h2
 
 import com.dbx.agent.ConnectParams
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
+import com.dbx.agent.DatabaseAgent
+import com.dbx.agent.test.JdbcAgentBehaviorTest
 
-class H2AgentTest {
-    @Test
-    fun `executes statements that return result sets without SELECT prefix`() {
-        val agent = H2Agent()
-        agent.connect(ConnectParams(database = "mem:dbx-agent-call;DB_CLOSE_DELAY=-1"))
-
-        val result = agent.executeQuery("CALL 42", null)
-
-        assertEquals(listOf("42"), result.columns)
-        assertEquals(listOf(listOf(42)), result.rows)
-        assertEquals(0, result.affected_rows)
-        assertFalse(result.truncated)
-        agent.disconnect()
+class H2AgentTest : JdbcAgentBehaviorTest() {
+    override fun createConnectedAgent(databaseName: String): DatabaseAgent {
+        return H2Agent().apply {
+            connect(ConnectParams(database = "mem:$databaseName;DB_CLOSE_DELAY=-1"))
+        }
     }
 
-    @Test
-    fun `does not mark exactly max rows as truncated`() {
-        val agent = H2Agent()
-        agent.connect(ConnectParams(database = "mem:dbx-agent-limit;DB_CLOSE_DELAY=-1"))
+    override fun resultSetSql(): String = "CALL 42"
 
-        val result = agent.executeQuery(
-            "SELECT X FROM SYSTEM_RANGE(1, 10000)",
-            null,
+    override fun expectedResultSetColumns(): List<String> = listOf("42")
+
+    override fun expectedResultSetRows(): List<List<Any?>> = listOf(listOf(42))
+
+    override fun rowsSql(rowCount: Int): String = "SELECT X FROM SYSTEM_RANGE(1, $rowCount)"
+
+    override fun metadataFixtureSql(): List<String> {
+        return listOf(
+            "CREATE TABLE BETA_TABLE (ID INT PRIMARY KEY)",
+            "CREATE TABLE ALPHA_TABLE (ID INT PRIMARY KEY)",
+            "CREATE TABLE COLUMN_ORDER_SAMPLE (ID INT PRIMARY KEY, NAME VARCHAR(64), CREATED_AT TIMESTAMP)",
         )
-
-        assertEquals(10000, result.rows.size)
-        assertFalse(result.truncated)
-        agent.disconnect()
     }
 
-    @Test
-    fun `marks results beyond max rows as truncated`() {
-        val agent = H2Agent()
-        agent.connect(ConnectParams(database = "mem:dbx-agent-truncated;DB_CLOSE_DELAY=-1"))
+    override fun metadataSchema(): String = "PUBLIC"
 
-        val result = agent.executeQuery(
-            "SELECT X FROM SYSTEM_RANGE(1, 10001)",
-            null,
-        )
+    override fun expectedTablesInOrder(): List<String> {
+        return listOf("ALPHA_TABLE", "BETA_TABLE", "COLUMN_ORDER_SAMPLE")
+    }
 
-        assertEquals(10000, result.rows.size)
-        assertTrue(result.truncated)
-        agent.disconnect()
+    override fun metadataColumnsTable(): String = "COLUMN_ORDER_SAMPLE"
+
+    override fun expectedColumnsInOrder(): List<String> {
+        return listOf("ID", "NAME", "CREATED_AT")
     }
 }
