@@ -7,6 +7,9 @@ dependencies {
     implementation(project(":common"))
     implementation(fileTree("libs") { include("*.jar") })
     implementation("com.oracle.database.jdbc:ojdbc11:23.7.0.25.01")
+    testImplementation(project(":test-support"))
+    testImplementation(kotlin("test"))
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
 }
 
 kotlin {
@@ -19,4 +22,8 @@ tasks.shadowJar {
     manifest {
         attributes("Agent-Label" to "Oracle", "Main-Class" to "com.dbx.agent.oracle.OracleAgentKt")
     }
+}
+
+tasks.test {
+    useJUnitPlatform()
 }

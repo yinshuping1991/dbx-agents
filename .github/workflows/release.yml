@@ -224,7 +224,7 @@ jobs:
           }
 
           generate_jar_entry() {
-            local name="$1" label="$2" file="$3" jre_key="$4" version="$5"
+            local name="$1" label="$2" file="$3" jre_key="$4" version="$5" external_driver="$6"
             local sha256=$(sha256sum "$file" | cut -d' ' -f1)
             local size=$(stat -c%s "$file")
             local url="https://github.com/${REPO}/releases/download/${TAG}/$(basename $file)"
@@ -234,6 +234,7 @@ jobs:
                 "label": "${label}",
                 "min_app_version": "0.6.0",
                 "jre": "${jre_key}",
+                "external_driver_required": ${external_driver},
                 "jar": { "url": "${url}", "sha256": "${sha256}", "size": ${size} }
               }
           ENTRY
@@ -268,12 +269,14 @@ jobs:
           DRIVERS=""
           for f in release/dbx-agent-*.jar; do
             name=$(basename "$f" .jar | sed 's/dbx-agent-//')
-            label=$(unzip -p "$f" META-INF/MANIFEST.MF | grep -i "Agent-Label" | cut -d: -f2 | tr -d ' \r' || echo "$name")
+            label=$(unzip -p "$f" META-INF/MANIFEST.MF | awk -F': ' 'BEGIN{IGNORECASE=1} /^Agent-Label:/ {sub(/\r$/, "", $2); print $2; exit}' || echo "$name")
             [ -z "$label" ] && label="$name"
+            external_driver=$(unzip -p "$f" META-INF/MANIFEST.MF | awk -F': ' 'BEGIN{IGNORECASE=1} /^Agent-External-Driver:/ {sub(/\r$/, "", $2); print tolower($2); exit}' || true)
+            [ "$external_driver" = "true" ] || external_driver="false"
             jre_key=$(detect_jre_key "$name")
             version=$(get_module_version "$name")
             [ -n "$DRIVERS" ] && DRIVERS="${DRIVERS},"$'\n'
-            DRIVERS="${DRIVERS}$(generate_jar_entry "$name" "$label" "$f" "$jre_key" "$version")"
+            DRIVERS="${DRIVERS}$(generate_jar_entry "$name" "$label" "$f" "$jre_key" "$version" "$external_driver")"
           done
 
           cat > release/agent-registry.json <<EOF

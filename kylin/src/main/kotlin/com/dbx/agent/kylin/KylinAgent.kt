@@ -11,11 +11,6 @@ class KylinAgent : DatabaseAgent {
 
     override fun getConnection(): Connection? = connection
 
-    companion object {
-        private const val MAX_ROWS = 10000
-        private val QUERY_PREFIXES = listOf("SELECT", "WITH", "SHOW", "DESCRIBE", "EXPLAIN")
-    }
-
     override fun connect(params: ConnectParams) {
         Class.forName("org.apache.kylin.jdbc.Driver")
         val url = "jdbc:kylin://${params.host}:${params.port}/${params.database}"
@@ -113,71 +108,13 @@ class KylinAgent : DatabaseAgent {
     }
 
     override fun executeQuery(sql: String, schema: String?): QueryResult {
-        val conn = connection ?: throw IllegalStateException("Not connected")
-
-        val trimmedSql = sql.trim().trimEnd(';')
-        val upperSql = trimmedSql.uppercase().trimStart()
-
-        // Translate transaction control to JDBC calls
-        if (upperSql == "BEGIN" || upperSql == "BEGIN TRANSACTION") {
-            val start = System.currentTimeMillis()
-            conn.autoCommit = false
-            return QueryResult(emptyList(), emptyList(), 0, System.currentTimeMillis() - start)
-        }
-        if (upperSql == "COMMIT") {
-            val start = System.currentTimeMillis()
-            conn.commit()
-            conn.autoCommit = true
-            return QueryResult(emptyList(), emptyList(), 0, System.currentTimeMillis() - start)
-        }
-        if (upperSql == "ROLLBACK") {
-            val start = System.currentTimeMillis()
-            conn.rollback()
-            conn.autoCommit = true
-            return QueryResult(emptyList(), emptyList(), 0, System.currentTimeMillis() - start)
-        }
-
-        val startTime = System.currentTimeMillis()
-        val isQuery = QUERY_PREFIXES.any { upperSql.startsWith(it) }
-
-        return if (isQuery) {
-            conn.createStatement().use { stmt ->
-                stmt.maxRows = MAX_ROWS + 1
-                stmt.executeQuery(trimmedSql).use { rs ->
-                    val meta = rs.metaData
-                    val columnCount = meta.columnCount
-                    val columns = (1..columnCount).map { meta.getColumnLabel(it) }
-                    val rows = mutableListOf<List<Any?>>()
-
-                    while (rs.next() && rows.size < MAX_ROWS) {
-                        val row = (1..columnCount).map { i -> getResultValue(rs, i, meta.getColumnType(i)) }
-                        rows.add(row)
-                    }
-
-                    val truncated = rs.next()
-                    val elapsed = System.currentTimeMillis() - startTime
-
-                    QueryResult(
-                        columns = columns,
-                        rows = rows,
-                        affected_rows = 0,
-                        execution_time_ms = elapsed,
-                        truncated = truncated
-                    )
-                }
-            }
-        } else {
-            conn.createStatement().use { stmt ->
-                val affected = stmt.executeUpdate(trimmedSql)
-                val elapsed = System.currentTimeMillis() - startTime
-                QueryResult(
-                    columns = emptyList(),
-                    rows = emptyList(),
-                    affected_rows = affected.toLong(),
-                    execution_time_ms = elapsed
-                )
-            }
-        }
+        return JdbcExecutor.execute(
+            conn = connection ?: throw IllegalStateException("Not connected"),
+            sql = sql,
+            schema = schema,
+            setSchemaSql = ::setSchemaSQL,
+            valueReader = ::getResultValue,
+        )
     }
 
     override fun setSchemaSQL(schema: String): String = ""

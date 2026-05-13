@@ -12,10 +12,6 @@ class Oracle10gAgent : DatabaseAgent {
     override fun getConnection(): Connection? = connection
 
     companion object {
-        private const val MAX_ROWS = 10000
-
-        private val QUERY_PREFIXES = listOf("SELECT", "WITH", "SHOW", "DESCRIBE", "EXPLAIN")
-
         private val SYSTEM_SCHEMAS = setOf(
             "SYS", "SYSTEM", "SYSMAN", "DBSNMP", "SYSBACKUP", "SYSDG", "SYSKM", "OUTLN",
             "AUDSYS", "LBACSYS", "DVF", "DVSYS", "APPQOSSYS", "CTXSYS", "MDSYS", "MDDATA",
@@ -52,7 +48,7 @@ class Oracle10gAgent : DatabaseAgent {
         }
     }
 
-    override fun setSchemaSQL(schema: String): String = "ALTER SESSION SET CURRENT_SCHEMA = \"$schema\""
+    override fun setSchemaSQL(schema: String): String = "ALTER SESSION SET CURRENT_SCHEMA = ${JdbcIdentifiers.doubleQuote(schema)}"
 
     override fun connect(params: ConnectParams) {
         Class.forName("oracle.jdbc.OracleDriver")
@@ -292,76 +288,18 @@ class Oracle10gAgent : DatabaseAgent {
     }
 
     override fun executeQuery(sql: String, schema: String?): QueryResult {
-        val conn = requireConnection()
-        val trimmedSql = sql.trim().trimEnd(';')
-        val upperSql = trimmedSql.uppercase().trimStart()
+        return JdbcExecutor.execute(
+            conn = requireConnection(),
+            sql = rewriteFetchFirst(sql.trim().trimEnd(';')),
+            schema = schema,
+            setSchemaSql = ::setSchemaSQL,
+            valueReader = ::stringResultValue,
+        )
+    }
 
-        if (upperSql == "BEGIN" || upperSql == "BEGIN TRANSACTION") {
-            val start = System.currentTimeMillis()
-            conn.autoCommit = false
-            return QueryResult(emptyList(), emptyList(), 0, System.currentTimeMillis() - start)
-        }
-        if (upperSql == "COMMIT") {
-            val start = System.currentTimeMillis()
-            conn.commit()
-            conn.autoCommit = true
-            return QueryResult(emptyList(), emptyList(), 0, System.currentTimeMillis() - start)
-        }
-        if (upperSql == "ROLLBACK") {
-            val start = System.currentTimeMillis()
-            conn.rollback()
-            conn.autoCommit = true
-            return QueryResult(emptyList(), emptyList(), 0, System.currentTimeMillis() - start)
-        }
-
-        if (!schema.isNullOrBlank()) {
-            conn.createStatement().use { stmt ->
-                stmt.execute(setSchemaSQL(schema))
-            }
-        }
-
-        val startTime = System.currentTimeMillis()
-        val isQuery = QUERY_PREFIXES.any { upperSql.startsWith(it) }
-
-        if (isQuery) {
-            val rewrittenSql = rewriteFetchFirst(trimmedSql)
-            conn.createStatement().use { stmt ->
-                stmt.executeQuery(rewrittenSql).use { rs ->
-                    val meta = rs.metaData
-                    val colCount = meta.columnCount
-                    val columns = (1..colCount).map { meta.getColumnLabel(it) }
-                    val rows = mutableListOf<List<Any?>>()
-                    while (rs.next() && rows.size < MAX_ROWS) {
-                        val row = (1..colCount).map { i ->
-                            val value = rs.getObject(i)
-                            if (rs.wasNull()) null else value?.toString()
-                        }
-                        rows.add(row)
-                    }
-                    val elapsed = System.currentTimeMillis() - startTime
-                    return QueryResult(
-                        columns = columns,
-                        rows = rows,
-                        affected_rows = 0,
-                        execution_time_ms = elapsed,
-                        truncated = rows.size >= MAX_ROWS
-                    )
-                }
-            }
-        } else {
-            conn.createStatement().use { stmt ->
-                conn.autoCommit = true
-                val affected = stmt.executeUpdate(trimmedSql)
-                val elapsed = System.currentTimeMillis() - startTime
-                return QueryResult(
-                    columns = emptyList(),
-                    rows = emptyList(),
-                    affected_rows = affected.toLong(),
-                    execution_time_ms = elapsed,
-                    truncated = false
-                )
-            }
-        }
+    private fun stringResultValue(rs: java.sql.ResultSet, index: Int, sqlType: Int): Any? {
+        val value = rs.getObject(index)
+        return if (rs.wasNull()) null else value?.toString()
     }
 
     override fun disconnect() {

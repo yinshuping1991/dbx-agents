@@ -6,6 +6,9 @@ plugins {
 dependencies {
     implementation(project(":common"))
     implementation(fileTree("libs") { include("*.jar") })
+    testImplementation(project(":test-support"))
+    testImplementation(kotlin("test"))
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
 }
 
 kotlin {
@@ -16,6 +19,14 @@ tasks.shadowJar {
     archiveBaseName.set("dbx-agent-sundb")
     archiveClassifier.set("")
     manifest {
-        attributes("Agent-Label" to "SunDB", "Main-Class" to "com.dbx.agent.sundb.SundbAgentKt")
+        attributes(
+            "Agent-Label" to "SunDB",
+            "Agent-External-Driver" to "true",
+            "Main-Class" to "com.dbx.agent.sundb.SundbAgentKt"
+        )
     }
+}
+
+tasks.test {
+    useJUnitPlatform()
 }

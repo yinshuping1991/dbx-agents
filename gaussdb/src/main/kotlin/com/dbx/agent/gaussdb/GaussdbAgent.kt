@@ -247,64 +247,16 @@ class GaussdbAgent : DatabaseAgent {
     }
 
     override fun executeQuery(sql: String, schema: String?): QueryResult {
-        val conn = connection ?: throw IllegalStateException("Not connected")
-        val maxRows = 10000
-
-        if (schema != null) {
-            conn.createStatement().use { stmt ->
-                stmt.execute("SET search_path TO \"$schema\"")
-            }
-        }
-
-        val trimmedSql = sql.trim()
-        val isQuery = trimmedSql.uppercase().let {
-            it.startsWith("SELECT") || it.startsWith("WITH") ||
-                it.startsWith("SHOW") || it.startsWith("DESCRIBE") || it.startsWith("EXPLAIN")
-        }
-
-        val startTime = System.currentTimeMillis()
-
-        return if (isQuery) {
-            conn.createStatement().use { stmt ->
-                stmt.maxRows = maxRows + 1
-                stmt.executeQuery(trimmedSql).use { rs ->
-                    val meta = rs.metaData
-                    val columnCount = meta.columnCount
-                    val columns = (1..columnCount).map { meta.getColumnLabel(it) }
-                    val rows = mutableListOf<List<Any?>>()
-
-                    while (rs.next() && rows.size < maxRows) {
-                        val row = (1..columnCount).map { i -> getResultValue(rs, i, meta.getColumnType(i)) }
-                        rows.add(row)
-                    }
-
-                    val truncated = rs.next()
-                    val elapsed = System.currentTimeMillis() - startTime
-
-                    QueryResult(
-                        columns = columns,
-                        rows = rows,
-                        affected_rows = 0,
-                        execution_time_ms = elapsed,
-                        truncated = truncated
-                    )
-                }
-            }
-        } else {
-            conn.createStatement().use { stmt ->
-                val affected = stmt.executeUpdate(trimmedSql)
-                val elapsed = System.currentTimeMillis() - startTime
-                QueryResult(
-                    columns = emptyList(),
-                    rows = emptyList(),
-                    affected_rows = affected.toLong(),
-                    execution_time_ms = elapsed
-                )
-            }
-        }
+        return JdbcExecutor.execute(
+            conn = connection ?: throw IllegalStateException("Not connected"),
+            sql = sql,
+            schema = schema,
+            setSchemaSql = ::setSchemaSQL,
+            valueReader = ::getResultValue,
+        )
     }
 
-    override fun setSchemaSQL(schema: String): String = "SET search_path TO \"$schema\""
+    override fun setSchemaSQL(schema: String): String = "SET search_path TO ${JdbcIdentifiers.doubleQuote(schema)}"
 
     override fun disconnect() {
         connection?.close()

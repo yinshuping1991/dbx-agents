@@ -7,6 +7,8 @@ dependencies {
     implementation(project(":common"))
     implementation(fileTree("libs") { include("*.jar") })
     implementation("com.h2database:h2:2.3.232")
+    testImplementation(kotlin("test"))
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
 }
 
 kotlin {
@@ -19,4 +21,8 @@ tasks.shadowJar {
     manifest {
         attributes("Agent-Label" to "H2", "Main-Class" to "com.dbx.agent.h2.H2AgentKt")
     }
+}
+
+tasks.test {
+    useJUnitPlatform()
 }

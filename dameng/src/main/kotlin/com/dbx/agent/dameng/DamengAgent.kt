@@ -12,14 +12,11 @@ class DamengAgent : DatabaseAgent {
 
     override fun getConnection(): Connection? = connection
     companion object {
-        private const val MAX_ROWS = 10000
-
         private val SYSTEM_USERS = setOf(
             "SYS", "SYSAUDITOR", "SYSSSO", "CTISYS",
             "SYS_DBA", "_SYS_STATISTICS", "SYS_PHM"
         )
 
-        private val QUERY_PREFIXES = listOf("SELECT", "WITH", "SHOW", "DESCRIBE", "EXPLAIN")
     }
 
     override fun connect(params: ConnectParams) {
@@ -233,76 +230,14 @@ class DamengAgent : DatabaseAgent {
     }
 
     override fun executeQuery(sql: String, schema: String?): QueryResult {
-        val conn = requireConnection()
-        val trimmedSql = sql.trim().trimEnd(';')
-        val upperSql = trimmedSql.uppercase().trimStart()
+        return JdbcExecutor.execute(requireConnection(), sql, schema, ::setSchemaSQL, valueReader = ::stringResultValue)
+    }
 
-        // Translate transaction control to JDBC calls
-        if (upperSql == "BEGIN" || upperSql == "BEGIN TRANSACTION") {
-            val start = System.currentTimeMillis()
-            conn.autoCommit = false
-            return QueryResult(emptyList(), emptyList(), 0, System.currentTimeMillis() - start)
-        }
-        if (upperSql == "COMMIT") {
-            val start = System.currentTimeMillis()
-            conn.commit()
-            conn.autoCommit = true
-            return QueryResult(emptyList(), emptyList(), 0, System.currentTimeMillis() - start)
-        }
-        if (upperSql == "ROLLBACK") {
-            val start = System.currentTimeMillis()
-            conn.rollback()
-            conn.autoCommit = true
-            return QueryResult(emptyList(), emptyList(), 0, System.currentTimeMillis() - start)
-        }
+    override fun setSchemaSQL(schema: String): String = "SET SCHEMA ${JdbcIdentifiers.doubleQuote(schema)}"
 
-        // Set schema if provided
-        if (!schema.isNullOrBlank()) {
-            conn.createStatement().use { stmt ->
-                stmt.execute("SET SCHEMA \"$schema\"")
-            }
-        }
-
-        val startTime = System.currentTimeMillis()
-        val isQuery = QUERY_PREFIXES.any { upperSql.startsWith(it) }
-
-        if (isQuery) {
-            conn.createStatement().use { stmt ->
-                stmt.executeQuery(trimmedSql).use { rs ->
-                    val meta = rs.metaData
-                    val colCount = meta.columnCount
-                    val columns = (1..colCount).map { meta.getColumnLabel(it) }
-                    val rows = mutableListOf<List<Any?>>()
-                    while (rs.next() && rows.size < MAX_ROWS) {
-                        val row = (1..colCount).map { i ->
-                            val value = rs.getObject(i)
-                            if (rs.wasNull()) null else value?.toString()
-                        }
-                        rows.add(row)
-                    }
-                    val elapsed = System.currentTimeMillis() - startTime
-                    return QueryResult(
-                        columns = columns,
-                        rows = rows,
-                        affected_rows = 0,
-                        execution_time_ms = elapsed,
-                        truncated = rows.size >= MAX_ROWS
-                    )
-                }
-            }
-        } else {
-            conn.createStatement().use { stmt ->
-                val affected = stmt.executeUpdate(trimmedSql)
-                val elapsed = System.currentTimeMillis() - startTime
-                return QueryResult(
-                    columns = emptyList(),
-                    rows = emptyList(),
-                    affected_rows = affected.toLong(),
-                    execution_time_ms = elapsed,
-                    truncated = false
-                )
-            }
-        }
+    private fun stringResultValue(rs: ResultSet, index: Int, sqlType: Int): Any? {
+        val value = rs.getObject(index)
+        return if (rs.wasNull()) null else value?.toString()
     }
 
     override fun disconnect() {

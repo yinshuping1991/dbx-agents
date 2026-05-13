@@ -7,6 +7,9 @@ dependencies {
     implementation(project(":common"))
     implementation(fileTree("libs") { include("*.jar") })
     implementation("com.dameng:DmJdbcDriver18:8.1.3.140")
+    testImplementation(project(":test-support"))
+    testImplementation(kotlin("test"))
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
 }
 
 kotlin {
@@ -19,4 +22,8 @@ tasks.shadowJar {
     manifest {
         attributes("Agent-Label" to "达梦 DM8", "Main-Class" to "com.dbx.agent.dameng.DamengAgentKt")
     }
+}
+
+tasks.test {
+    useJUnitPlatform()
 }

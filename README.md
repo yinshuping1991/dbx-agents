@@ -41,6 +41,11 @@ Requires JDK 8 and 21 (Gradle toolchain auto-downloads if needed).
 
 Output JARs are in `{module}/build/libs/`.
 
+## Development
+
+- Agent authoring guide: [docs/agent-authoring.md](docs/agent-authoring.md)
+- JDBC agent template: [docs/examples/jdbc-agent-template](docs/examples/jdbc-agent-template)
+
 ## Architecture
 
 ```

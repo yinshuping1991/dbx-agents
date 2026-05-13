@@ -1,3 +1,4 @@
 */libs/*.jar
 build/
 .gradle/
+.DS_Store

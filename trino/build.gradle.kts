@@ -7,6 +7,9 @@ dependencies {
     implementation(project(":common"))
     implementation(fileTree("libs") { include("*.jar") })
     implementation("io.trino:trino-jdbc:471")
+    testImplementation(project(":test-support"))
+    testImplementation(kotlin("test"))
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
 }
 
 kotlin {
@@ -19,4 +22,8 @@ tasks.shadowJar {
     manifest {
         attributes("Agent-Label" to "Trino (Presto)", "Main-Class" to "com.dbx.agent.trino.TrinoAgentKt")
     }
+}
+
+tasks.test {
+    useJUnitPlatform()
 }

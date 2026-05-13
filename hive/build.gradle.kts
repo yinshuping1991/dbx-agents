@@ -8,6 +8,7 @@ dependencies {
     implementation(fileTree("libs") { include("*.jar") })
     implementation("org.apache.hive:hive-jdbc:4.0.1:standalone")
     implementation("org.slf4j:slf4j-nop:1.7.30")
+    testImplementation(project(":test-support"))
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
 }

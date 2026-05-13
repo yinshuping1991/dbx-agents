@@ -7,6 +7,9 @@ dependencies {
     implementation(project(":common"))
     implementation(fileTree("libs") { include("*.jar") })
     implementation("net.snowflake:snowflake-jdbc:3.22.0")
+    testImplementation(project(":test-support"))
+    testImplementation(kotlin("test"))
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
 }
 
 kotlin {
@@ -19,4 +22,8 @@ tasks.shadowJar {
     manifest {
         attributes("Agent-Label" to "Snowflake", "Main-Class" to "com.dbx.agent.snowflake.SnowflakeAgentKt")
     }
+}
+
+tasks.test {
+    useJUnitPlatform()
 }

@@ -10,7 +10,6 @@
   "informix": "0.1.2",
   "kingbase": "0.1.1",
   "kylin": "0.1.1",
-  "mongodb": "0.1.0",
   "neo4j": "0.1.1",
   "oracle": "0.1.1",
   "oracle-10g": "0.1.1",

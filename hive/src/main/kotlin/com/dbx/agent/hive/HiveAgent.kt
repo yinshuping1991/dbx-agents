@@ -3,19 +3,12 @@ package com.dbx.agent.hive
 import com.dbx.agent.*
 import java.sql.Connection
 import java.sql.DriverManager
-import java.sql.ResultSet
-import java.sql.Types
 
 class HiveAgent : DatabaseAgent {
 
     private var connection: Connection? = null
 
     override fun getConnection(): Connection? = connection
-
-    companion object {
-        private const val MAX_ROWS = 10000
-        private val QUERY_PREFIXES = listOf("SELECT", "WITH", "SHOW", "DESCRIBE", "EXPLAIN")
-    }
 
     override fun connect(params: ConnectParams) {
         Class.forName("org.apache.hive.jdbc.HiveDriver")
@@ -118,82 +111,10 @@ class HiveAgent : DatabaseAgent {
     }
 
     override fun executeQuery(sql: String, schema: String?): QueryResult {
-        val conn = requireConnection()
-        val trimmedSql = sql.trim().trimEnd(';')
-        val upperSql = trimmedSql.uppercase().trimStart()
-
-        // Transaction control
-        if (upperSql == "BEGIN" || upperSql == "BEGIN TRANSACTION") {
-            val start = System.currentTimeMillis()
-            conn.autoCommit = false
-            return QueryResult(emptyList(), emptyList(), 0, System.currentTimeMillis() - start)
-        }
-        if (upperSql == "COMMIT") {
-            val start = System.currentTimeMillis()
-            conn.commit()
-            conn.autoCommit = true
-            return QueryResult(emptyList(), emptyList(), 0, System.currentTimeMillis() - start)
-        }
-        if (upperSql == "ROLLBACK") {
-            val start = System.currentTimeMillis()
-            conn.rollback()
-            conn.autoCommit = true
-            return QueryResult(emptyList(), emptyList(), 0, System.currentTimeMillis() - start)
-        }
-
-        // Set schema if provided
-        if (!schema.isNullOrBlank()) {
-            conn.createStatement().use { stmt ->
-                stmt.execute(setSchemaSQL(schema))
-            }
-        }
-
-        val startTime = System.currentTimeMillis()
-        val isQuery = QUERY_PREFIXES.any { upperSql.startsWith(it) }
-
-        return if (isQuery) {
-            conn.createStatement().use { stmt ->
-                stmt.executeQuery(trimmedSql).use { rs ->
-                    val meta = rs.metaData
-                    val colCount = meta.columnCount
-                    val columns = (1..colCount).map { meta.getColumnLabel(it) }
-                    val rows = mutableListOf<List<Any?>>()
-
-                    while (rs.next() && rows.size < MAX_ROWS) {
-                        val row = (1..colCount).map { i ->
-                            val value = rs.getObject(i)
-                            if (rs.wasNull()) null else value?.toString()
-                        }
-                        rows.add(row)
-                    }
-
-                    val truncated = rows.size >= MAX_ROWS
-                    val elapsed = System.currentTimeMillis() - startTime
-
-                    QueryResult(
-                        columns = columns,
-                        rows = rows,
-                        affected_rows = 0,
-                        execution_time_ms = elapsed,
-                        truncated = truncated
-                    )
-                }
-            }
-        } else {
-            conn.createStatement().use { stmt ->
-                val affected = stmt.executeUpdate(trimmedSql)
-                val elapsed = System.currentTimeMillis() - startTime
-                QueryResult(
-                    columns = emptyList(),
-                    rows = emptyList(),
-                    affected_rows = affected.toLong(),
-                    execution_time_ms = elapsed
-                )
-            }
-        }
+        return JdbcExecutor.execute(requireConnection(), sql, schema, ::setSchemaSQL, valueReader = ::stringResultValue)
     }
 
-    override fun setSchemaSQL(schema: String): String = "USE $schema"
+    override fun setSchemaSQL(schema: String): String = "USE ${JdbcIdentifiers.backtick(schema)}"
 
     override fun disconnect() {
         connection?.close()
@@ -202,6 +123,11 @@ class HiveAgent : DatabaseAgent {
 
     private fun requireConnection(): Connection {
         return connection ?: throw IllegalStateException("Not connected")
+    }
+
+    private fun stringResultValue(rs: java.sql.ResultSet, index: Int, sqlType: Int): Any? {
+        val value = rs.getObject(index)
+        return if (rs.wasNull()) null else value?.toString()
     }
 }
 
