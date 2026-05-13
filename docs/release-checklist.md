@@ -139,14 +139,25 @@ Before tagging:
 ```bash
 git status --short
 git log --oneline -5
+git tag --list 'v*' --sort=-creatordate | head
 ```
 
-Create and push a tag:
+Choose a new tag that does not already exist locally or on GitHub. For example:
 
 ```bash
-git tag v0.2.0
+RELEASE_TAG=v0.3.0
+git tag --list "$RELEASE_TAG"
+git ls-remote --tags origin "$RELEASE_TAG"
+```
+
+Both commands should print nothing before you create the tag.
+
+Create and push the tag:
+
+```bash
+git tag "$RELEASE_TAG"
 git push origin main
-git push origin v0.2.0
+git push origin "$RELEASE_TAG"
 ```
 
 The release workflow will:
