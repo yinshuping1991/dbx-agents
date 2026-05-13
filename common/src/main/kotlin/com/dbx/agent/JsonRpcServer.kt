@@ -52,7 +52,9 @@ class JsonRpcServer(private val agent: DatabaseAgent) {
                 mapOf("ok" to true)
             }
             "test_connection" -> {
-                agent.testConnection(gson.fromJson(params, ConnectParams::class.java))
+                if (!agent.testConnection(gson.fromJson(params, ConnectParams::class.java))) {
+                    throw RuntimeException("Connection failed")
+                }
                 mapOf("ok" to true)
             }
             "list_databases" -> agent.listDatabases()

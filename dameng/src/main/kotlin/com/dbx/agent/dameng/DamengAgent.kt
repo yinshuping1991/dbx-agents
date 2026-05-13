@@ -31,12 +31,8 @@ class DamengAgent : DatabaseAgent {
     override fun testConnection(params: ConnectParams): Boolean {
         Class.forName("dm.jdbc.driver.DmDriver")
         val url = "jdbc:dm://${params.host}:${params.port}/${params.database}"
-        return try {
-            DriverManager.getConnection(url, params.username, params.password).use { conn ->
-                conn.isValid(5)
-            }
-        } catch (_: Exception) {
-            false
+        DriverManager.getConnection(url, params.username, params.password).use { conn ->
+            return conn.isValid(5)
         }
     }
 
