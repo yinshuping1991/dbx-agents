@@ -45,6 +45,7 @@ Output JARs are in `{module}/build/libs/`.
 
 - Agent authoring guide: [docs/agent-authoring.md](docs/agent-authoring.md)
 - JDBC agent template: [docs/examples/jdbc-agent-template](docs/examples/jdbc-agent-template)
+- Release checklist: [docs/release-checklist.md](docs/release-checklist.md)
 
 ## Architecture
 
