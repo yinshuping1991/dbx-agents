@@ -135,11 +135,34 @@ jobs:
             PLATFORMS="${PLATFORMS}$(generate_jre_entry "$p" "$f")"
           done
 
-          # Build drivers JSON
-          DAMENG=$(generate_jar_entry "dameng" "达梦 DM8" "release/dbx-agent-dameng.jar")
-          KINGBASE=$(generate_jar_entry "kingbase" "人大金仓 KingbaseES" "release/dbx-agent-kingbase.jar")
-          VASTBASE=$(generate_jar_entry "vastbase" "Vastbase" "release/dbx-agent-vastbase.jar")
-          GOLDENDB=$(generate_jar_entry "goldendb" "GoldenDB" "release/dbx-agent-goldendb.jar")
+          # Build drivers JSON — auto-detect all agent JARs
+          declare -A LABELS=(
+            ["dameng"]="达梦 DM8"
+            ["kingbase"]="人大金仓 KingbaseES"
+            ["vastbase"]="Vastbase"
+            ["goldendb"]="GoldenDB"
+            ["oracle"]="Oracle"
+            ["gaussdb"]="GaussDB"
+            ["h2"]="H2"
+            ["snowflake"]="Snowflake"
+            ["trino"]="Trino (Presto)"
+            ["hive"]="Apache Hive"
+            ["db2"]="IBM DB2"
+            ["informix"]="IBM Informix"
+            ["neo4j"]="Neo4j"
+            ["cassandra"]="Apache Cassandra"
+            ["bigquery"]="Google BigQuery"
+            ["kylin"]="Apache Kylin"
+            ["sundb"]="SunDB"
+          )
+
+          DRIVERS=""
+          for f in release/dbx-agent-*.jar; do
+            name=$(basename "$f" .jar | sed 's/dbx-agent-//')
+            label="${LABELS[$name]:-$name}"
+            [ -n "$DRIVERS" ] && DRIVERS="${DRIVERS},"$'\n'
+            DRIVERS="${DRIVERS}$(generate_jar_entry "$name" "$label" "$f")"
+          done
 
           cat > release/agent-registry.json <<EOF
           {
@@ -150,10 +173,7 @@ jobs:
               }
             },
             "drivers": {
-          ${DAMENG},
-          ${KINGBASE},
-          ${VASTBASE},
-          ${GOLDENDB}
+          ${DRIVERS}
             }
           }
           EOF
