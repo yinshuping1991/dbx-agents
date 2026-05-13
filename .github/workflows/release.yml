@@ -33,7 +33,7 @@ jobs:
       - name: Build JRE for all platforms
         shell: bash
         run: |
-          MODULES="java.base,java.sql,java.sql.rowset,java.naming,java.management,java.desktop,jdk.charsets"
+          MODULES="java.base,java.sql,java.sql.rowset,java.naming,java.management,java.desktop,java.security.jgss,java.security.sasl,jdk.charsets"
           JLINK_OPTS="--strip-debug --no-header-files --no-man-pages --compress=zip-6"
 
           # Build native linux-x64 JRE via jlink
