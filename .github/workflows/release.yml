@@ -8,7 +8,72 @@ permissions:
   contents: write
 
 jobs:
+  bump-versions:
+    runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.bump.outputs.versions }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect changes and bump versions
+        id: bump
+        shell: bash
+        run: |
+          PREV_TAG=$(git tag --sort=-creatordate | grep '^v' | sed -n '2p')
+          if [ -z "$PREV_TAG" ]; then
+            echo "No previous tag found, all modules are new"
+            PREV_TAG=$(git rev-list --max-parents=0 HEAD)
+          fi
+          echo "Comparing $PREV_TAG..HEAD"
+
+          VERSIONS=$(cat versions.json)
+          CHANGED=false
+
+          for dir in $(echo "$VERSIONS" | python3 -c "import sys,json; [print(k) for k in json.load(sys.stdin)]"); do
+            if [ -d "$dir" ] || [ "$dir" = "common" ]; then
+              CHECK_DIRS="$dir/"
+              # common changes affect all modules
+              if git diff --quiet "$PREV_TAG"..HEAD -- common/ 2>/dev/null; then
+                COMMON_CHANGED=false
+              else
+                COMMON_CHANGED=true
+              fi
+
+              if git diff --quiet "$PREV_TAG"..HEAD -- "$dir/" 2>/dev/null && [ "$COMMON_CHANGED" = "false" ]; then
+                echo "  $dir: no changes"
+              else
+                echo "  $dir: CHANGED"
+                OLD_VER=$(echo "$VERSIONS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('$dir','0.1.0'))")
+                IFS='.' read -r major minor patch <<< "$OLD_VER"
+                NEW_VER="$major.$minor.$((patch + 1))"
+                VERSIONS=$(echo "$VERSIONS" | python3 -c "
+          import sys, json
+          d = json.load(sys.stdin)
+          d['$dir'] = '$NEW_VER'
+          json.dump(d, sys.stdout, indent=2)
+          print()
+          ")
+                CHANGED=true
+                echo "  $dir: $OLD_VER -> $NEW_VER"
+              fi
+            fi
+          done
+
+          echo "$VERSIONS" > versions.json
+          cat versions.json
+          echo "versions=$(cat versions.json | python3 -c 'import sys,json; print(json.dumps(json.load(sys.stdin)))')" >> "$GITHUB_OUTPUT"
+
+          if [ "$CHANGED" = "true" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add versions.json
+            git commit -m "chore: bump module versions [skip ci]"
+            git push origin HEAD:main
+          fi
+
   build-agents:
+    needs: [bump-versions]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -45,12 +110,10 @@ jobs:
           JLINK_OPTS="--strip-debug --no-header-files --no-man-pages --compress=zip-6"
           JRE_KEY="${{ matrix.jre-key }}"
 
-          # Build native linux-x64 JRE via jlink
           jlink --add-modules $MODULES $JLINK_OPTS --output dbx-jre
           tar czf dbx-jre-${JRE_KEY}-linux-x64.tar.gz dbx-jre
           rm -rf dbx-jre
 
-          # Download and jlink for other platforms
           ADOPTIUM="https://api.adoptium.net/v3/binary/latest/${{ matrix.java-version }}/ga"
           declare -A PLATFORMS=(
             ["macos-aarch64"]="mac/aarch64"
@@ -74,7 +137,6 @@ jobs:
               rm -f jdk-$platform.tar.gz
             fi
             JAVA_HOME_CROSS="jdk-$platform"
-            # Find jmods directory
             if [ -d "$JAVA_HOME_CROSS/Contents/Home/jmods" ]; then
               JMODS="$JAVA_HOME_CROSS/Contents/Home/jmods"
             else
@@ -98,7 +160,6 @@ jobs:
         shell: bash
         run: |
           ADOPTIUM="https://api.adoptium.net/v3/binary/latest/8/ga"
-          # macos-aarch64 not available for JRE 8; use macos-x64 (runs via Rosetta 2)
           declare -A PLATFORMS=(
             ["linux-x64"]="linux/x64"
             ["linux-aarch64"]="linux/aarch64"
@@ -124,7 +185,6 @@ jobs:
             rm -rf dbx-jre
           done
 
-          # macOS aarch64: reuse x64 build (runs via Rosetta 2)
           if [ -f dbx-jre-8-macos-x64.tar.gz ]; then
             cp dbx-jre-8-macos-x64.tar.gz dbx-jre-8-macos-aarch64.tar.gz
           fi
@@ -136,9 +196,10 @@ jobs:
           path: "dbx-jre-8-*.tar.gz"
 
   release:
-    needs: [build-agents, build-jre, build-jre8]
+    needs: [bump-versions, build-agents, build-jre, build-jre8]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -151,18 +212,25 @@ jobs:
           ls -lh release/
 
       - name: Generate agent-registry.json
+        env:
+          MODULE_VERSIONS: ${{ needs.bump-versions.outputs.versions }}
         run: |
           TAG="${GITHUB_REF_NAME}"
           REPO="${GITHUB_REPOSITORY}"
 
+          get_module_version() {
+            local name="$1"
+            echo "$MODULE_VERSIONS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('$name','${TAG#v}'))"
+          }
+
           generate_jar_entry() {
-            local name="$1" label="$2" file="$3" jre_key="$4"
+            local name="$1" label="$2" file="$3" jre_key="$4" version="$5"
             local sha256=$(sha256sum "$file" | cut -d' ' -f1)
             local size=$(stat -c%s "$file")
             local url="https://github.com/${REPO}/releases/download/${TAG}/$(basename $file)"
             cat <<ENTRY
               "${name}": {
-                "version": "${TAG#v}",
+                "version": "${version}",
                 "label": "${label}",
                 "min_app_version": "0.6.0",
                 "jre": "${jre_key}",
@@ -186,7 +254,6 @@ jobs:
             echo "$PLATFORMS"
           }
 
-          # Detect JRE key from jar name: oracle-10g → "8", everything else → "17"
           detect_jre_key() {
             local name="$1"
             case "$name" in
@@ -195,19 +262,18 @@ jobs:
             esac
           }
 
-          # Build jres JSON
           JRE17_PLATFORMS=$(generate_jre_platforms "17")
           JRE8_PLATFORMS=$(generate_jre_platforms "8")
 
-          # Build drivers JSON
           DRIVERS=""
           for f in release/dbx-agent-*.jar; do
             name=$(basename "$f" .jar | sed 's/dbx-agent-//')
             label=$(unzip -p "$f" META-INF/MANIFEST.MF | grep -i "Agent-Label" | cut -d: -f2 | tr -d ' \r' || echo "$name")
             [ -z "$label" ] && label="$name"
             jre_key=$(detect_jre_key "$name")
+            version=$(get_module_version "$name")
             [ -n "$DRIVERS" ] && DRIVERS="${DRIVERS},"$'\n'
-            DRIVERS="${DRIVERS}$(generate_jar_entry "$name" "$label" "$f" "$jre_key")"
+            DRIVERS="${DRIVERS}$(generate_jar_entry "$name" "$label" "$f" "$jre_key" "$version")"
           done
 
           cat > release/agent-registry.json <<EOF
@@ -233,6 +299,8 @@ jobs:
           EOF
 
           python3 -m json.tool release/agent-registry.json > /dev/null
+          echo "=== agent-registry.json ==="
+          cat release/agent-registry.json
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
