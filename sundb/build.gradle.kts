@@ -16,6 +16,6 @@ tasks.shadowJar {
     archiveBaseName.set("dbx-agent-sundb")
     archiveClassifier.set("")
     manifest {
-        attributes("Main-Class" to "com.dbx.agent.sundb.SundbAgentKt")
+        attributes("Agent-Label" to "SunDB", "Main-Class" to "com.dbx.agent.sundb.SundbAgentKt")
     }
 }

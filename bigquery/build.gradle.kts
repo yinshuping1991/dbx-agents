@@ -16,6 +16,6 @@ tasks.shadowJar {
     archiveBaseName.set("dbx-agent-bigquery")
     archiveClassifier.set("")
     manifest {
-        attributes("Main-Class" to "com.dbx.agent.bigquery.BigQueryAgentKt")
+        attributes("Agent-Label" to "Google BigQuery", "Main-Class" to "com.dbx.agent.bigquery.BigQueryAgentKt")
     }
 }

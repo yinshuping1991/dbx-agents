@@ -17,6 +17,6 @@ tasks.shadowJar {
     archiveBaseName.set("dbx-agent-snowflake")
     archiveClassifier.set("")
     manifest {
-        attributes("Main-Class" to "com.dbx.agent.snowflake.SnowflakeAgentKt")
+        attributes("Agent-Label" to "Snowflake", "Main-Class" to "com.dbx.agent.snowflake.SnowflakeAgentKt")
     }
 }

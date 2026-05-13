@@ -17,6 +17,6 @@ tasks.shadowJar {
     archiveBaseName.set("dbx-agent-hive")
     archiveClassifier.set("")
     manifest {
-        attributes("Main-Class" to "com.dbx.agent.hive.HiveAgentKt")
+        attributes("Agent-Label" to "Apache Hive", "Main-Class" to "com.dbx.agent.hive.HiveAgentKt")
     }
 }

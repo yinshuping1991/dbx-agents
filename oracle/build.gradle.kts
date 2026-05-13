@@ -17,6 +17,6 @@ tasks.shadowJar {
     archiveBaseName.set("dbx-agent-oracle")
     archiveClassifier.set("")
     manifest {
-        attributes("Main-Class" to "com.dbx.agent.oracle.OracleAgentKt")
+        attributes("Agent-Label" to "Oracle", "Main-Class" to "com.dbx.agent.oracle.OracleAgentKt")
     }
 }

@@ -17,6 +17,6 @@ tasks.shadowJar {
     archiveBaseName.set("dbx-agent-vastbase")
     archiveClassifier.set("")
     manifest {
-        attributes("Main-Class" to "com.dbx.agent.vastbase.VastbaseAgentKt")
+        attributes("Agent-Label" to "Vastbase", "Main-Class" to "com.dbx.agent.vastbase.VastbaseAgentKt")
     }
 }

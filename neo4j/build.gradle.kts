@@ -17,6 +17,6 @@ tasks.shadowJar {
     archiveBaseName.set("dbx-agent-neo4j")
     archiveClassifier.set("")
     manifest {
-        attributes("Main-Class" to "com.dbx.agent.neo4j.Neo4jAgentKt")
+        attributes("Agent-Label" to "Neo4j", "Main-Class" to "com.dbx.agent.neo4j.Neo4jAgentKt")
     }
 }

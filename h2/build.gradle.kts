@@ -17,6 +17,6 @@ tasks.shadowJar {
     archiveBaseName.set("dbx-agent-h2")
     archiveClassifier.set("")
     manifest {
-        attributes("Main-Class" to "com.dbx.agent.h2.H2AgentKt")
+        attributes("Agent-Label" to "H2", "Main-Class" to "com.dbx.agent.h2.H2AgentKt")
     }
 }

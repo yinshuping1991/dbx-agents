@@ -17,6 +17,6 @@ tasks.shadowJar {
     archiveBaseName.set("dbx-agent-kylin")
     archiveClassifier.set("")
     manifest {
-        attributes("Main-Class" to "com.dbx.agent.kylin.KylinAgentKt")
+        attributes("Agent-Label" to "Apache Kylin", "Main-Class" to "com.dbx.agent.kylin.KylinAgentKt")
     }
 }
