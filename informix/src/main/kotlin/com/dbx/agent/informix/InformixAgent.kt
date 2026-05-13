@@ -3,6 +3,7 @@ package com.dbx.agent.informix
 import com.dbx.agent.*
 import java.sql.Connection
 import java.sql.DriverManager
+import kotlin.math.abs
 
 class InformixAgent : DatabaseAgent {
 
@@ -13,6 +14,22 @@ class InformixAgent : DatabaseAgent {
     companion object {
         private const val MAX_ROWS = 10000
         private val QUERY_PREFIXES = listOf("SELECT", "WITH", "SHOW", "DESCRIBE", "EXPLAIN")
+
+        fun buildJdbcUrl(params: ConnectParams): String {
+            val extraParams = params.url_params
+                .trim()
+                .trimStart(':', ';')
+                .trimEnd(';')
+            val serverParam = if (extraParams.contains("INFORMIXSERVER=", ignoreCase = true)) {
+                ""
+            } else {
+                "INFORMIXSERVER=${params.host}"
+            }
+            val jdbcParams = listOf(serverParam, extraParams)
+                .filter { it.isNotBlank() }
+                .joinToString(";")
+            return "jdbc:informix-sqli://${params.host}:${params.port}/${params.database}:$jdbcParams"
+        }
 
         /**
          * Map Informix coltype integer codes to type names.
@@ -54,17 +71,27 @@ class InformixAgent : DatabaseAgent {
                 else -> "UNKNOWN($baseType)"
             }
         }
+
+        fun primaryKeyColumnNumbers(parts: List<Int?>): Set<Int> {
+            return parts
+                .mapNotNull { part ->
+                    part?.let { abs(it) }?.takeIf { it > 0 }
+                }
+                .toSet()
+        }
+
+        fun databaseCatalogSql(): String = "SELECT name FROM sysmaster:sysdatabases ORDER BY name"
     }
 
     override fun connect(params: ConnectParams) {
         Class.forName("com.informix.jdbc.IfxDriver")
-        val url = "jdbc:informix-sqli://${params.host}:${params.port}/${params.database}:INFORMIXSERVER=${params.host}"
+        val url = buildJdbcUrl(params)
         connection = DriverManager.getConnection(url, params.username, params.password)
     }
 
     override fun testConnection(params: ConnectParams): Boolean {
         Class.forName("com.informix.jdbc.IfxDriver")
-        val url = "jdbc:informix-sqli://${params.host}:${params.port}/${params.database}:INFORMIXSERVER=${params.host}"
+        val url = buildJdbcUrl(params)
         DriverManager.getConnection(url, params.username, params.password).use { conn ->
             return conn.isValid(5)
         }
@@ -72,7 +99,7 @@ class InformixAgent : DatabaseAgent {
 
     override fun listDatabases(): List<DatabaseInfo> {
         val conn = requireConnection()
-        val sql = "SELECT name FROM sysdatabases ORDER BY name"
+        val sql = databaseCatalogSql()
         conn.createStatement().use { stmt ->
             stmt.executeQuery(sql).use { rs ->
                 return buildList {
@@ -114,6 +141,7 @@ class InformixAgent : DatabaseAgent {
 
     override fun getColumns(schema: String, table: String): List<ColumnInfo> {
         val conn = requireConnection()
+        val primaryKeyColumns = getPrimaryKeyColumnNumbers(conn, table)
         val sql = """
             SELECT c.colname, c.coltype, c.colno
             FROM syscolumns c
@@ -136,12 +164,34 @@ class InformixAgent : DatabaseAgent {
                             data_type = typeName,
                             is_nullable = isNullable,
                             column_default = null,
-                            is_primary_key = false,
+                            is_primary_key = primaryKeyColumns.contains(rs.getInt(3)),
                             extra = null,
                             comment = null
                         ))
                     }
                 }
+            }
+        }
+    }
+
+    private fun getPrimaryKeyColumnNumbers(conn: Connection, table: String): Set<Int> {
+        val sql = """
+            SELECT i.part1, i.part2, i.part3, i.part4, i.part5, i.part6, i.part7, i.part8,
+                   i.part9, i.part10, i.part11, i.part12, i.part13, i.part14, i.part15, i.part16
+            FROM sysconstraints c
+            JOIN sysindexes i ON i.idxname = c.idxname AND i.tabid = c.tabid
+            JOIN systables t ON t.tabid = c.tabid
+            WHERE t.tabname = ? AND c.constrtype = 'P'
+        """.trimIndent()
+
+        conn.prepareStatement(sql).use { stmt ->
+            stmt.setString(1, table)
+            stmt.executeQuery().use { rs ->
+                if (!rs.next()) return emptySet()
+                return primaryKeyColumnNumbers((1..16).map { index ->
+                    val value = rs.getInt(index)
+                    if (rs.wasNull()) null else value
+                })
             }
         }
     }

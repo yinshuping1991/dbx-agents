@@ -7,6 +7,8 @@ dependencies {
     implementation(project(":common"))
     implementation(fileTree("libs") { include("*.jar") })
     implementation("com.ibm.informix:jdbc:4.50.10")
+    testImplementation(kotlin("test"))
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
 }
 
 kotlin {
@@ -19,4 +21,8 @@ tasks.shadowJar {
     manifest {
         attributes("Agent-Label" to "IBM Informix", "Main-Class" to "com.dbx.agent.informix.InformixAgentKt")
     }
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
