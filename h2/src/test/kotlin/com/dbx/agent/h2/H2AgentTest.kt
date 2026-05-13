@@ -2,13 +2,12 @@ package com.dbx.agent.h2
 
 import com.dbx.agent.ConnectParams
 import com.dbx.agent.DatabaseAgent
-import com.dbx.agent.test.JdbcAgentBehaviorTest
+import com.dbx.agent.test.JdbcExecutionBehaviorTest
+import com.dbx.agent.test.JdbcMetadataBehaviorTest
 
-class H2AgentTest : JdbcAgentBehaviorTest() {
+class H2ExecutionBehaviorTest : JdbcExecutionBehaviorTest() {
     override fun createConnectedAgent(databaseName: String): DatabaseAgent {
-        return H2Agent().apply {
-            connect(ConnectParams(database = "mem:$databaseName;DB_CLOSE_DELAY=-1"))
-        }
+        return createH2Agent(databaseName)
     }
 
     override fun resultSetSql(): String = "CALL 42"
@@ -18,6 +17,12 @@ class H2AgentTest : JdbcAgentBehaviorTest() {
     override fun expectedResultSetRows(): List<List<Any?>> = listOf(listOf(42))
 
     override fun rowsSql(rowCount: Int): String = "SELECT X FROM SYSTEM_RANGE(1, $rowCount)"
+}
+
+class H2MetadataBehaviorTest : JdbcMetadataBehaviorTest() {
+    override fun createConnectedAgent(databaseName: String): DatabaseAgent {
+        return createH2Agent(databaseName)
+    }
 
     override fun metadataFixtureSql(): List<String> {
         return listOf(
@@ -37,5 +42,11 @@ class H2AgentTest : JdbcAgentBehaviorTest() {
 
     override fun expectedColumnsInOrder(): List<String> {
         return listOf("ID", "NAME", "CREATED_AT")
+    }
+}
+
+private fun createH2Agent(databaseName: String): DatabaseAgent {
+    return H2Agent().apply {
+        connect(ConnectParams(database = "mem:$databaseName;DB_CLOSE_DELAY=-1"))
     }
 }

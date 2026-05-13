@@ -1,6 +1,5 @@
 package com.dbx.agent.test
 
-import com.dbx.agent.DatabaseAgent
 import com.dbx.agent.JdbcExecutor
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
@@ -8,9 +7,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
-abstract class JdbcAgentBehaviorTest {
-    protected abstract fun createConnectedAgent(databaseName: String): DatabaseAgent
-
+abstract class JdbcExecutionBehaviorTest : JdbcConnectedAgentTest() {
     protected abstract fun resultSetSql(): String
 
     protected abstract fun expectedResultSetColumns(): List<String>
@@ -18,16 +15,6 @@ abstract class JdbcAgentBehaviorTest {
     protected abstract fun expectedResultSetRows(): List<List<Any?>>
 
     protected abstract fun rowsSql(rowCount: Int): String
-
-    protected abstract fun metadataFixtureSql(): List<String>
-
-    protected abstract fun metadataSchema(): String
-
-    protected abstract fun expectedTablesInOrder(): List<String>
-
-    protected abstract fun metadataColumnsTable(): String
-
-    protected abstract fun expectedColumnsInOrder(): List<String>
 
     @Test
     fun `executes statements that return result sets without SELECT prefix`() {
@@ -89,36 +76,6 @@ abstract class JdbcAgentBehaviorTest {
             assertEquals(emptyList(), rollback.rows)
             assertEquals(0, rollback.affected_rows)
             assertFalse(rollback.truncated)
-        }
-    }
-
-    @Test
-    fun `returns metadata in stable order`() {
-        withAgent("dbx-agent-metadata") { agent ->
-            metadataFixtureSql().forEach { sql ->
-                agent.executeQuery(sql, metadataSchema())
-            }
-
-            val expectedTables = expectedTablesInOrder()
-            val tableNames = agent.listTables(metadataSchema())
-                .map { it.name }
-                .filter { it in expectedTables }
-            assertEquals(expectedTables, tableNames)
-
-            val expectedColumns = expectedColumnsInOrder()
-            val columnNames = agent.getColumns(metadataSchema(), metadataColumnsTable())
-                .map { it.name }
-                .filter { it in expectedColumns }
-            assertEquals(expectedColumns, columnNames)
-        }
-    }
-
-    private fun withAgent(databaseName: String, block: (DatabaseAgent) -> Unit) {
-        val agent = createConnectedAgent(databaseName)
-        try {
-            block(agent)
-        } finally {
-            agent.disconnect()
         }
     }
 }

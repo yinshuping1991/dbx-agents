@@ -172,20 +172,24 @@ Only use JRE 8 for drivers that require it, such as legacy Oracle 10g support. I
 
 Every JDBC agent should have at least one execution-path regression test.
 
-For agents that can run with an embedded or in-memory database, prefer the shared behavior contract:
+For agents that can run with an embedded or in-memory database, prefer both shared behavior contracts:
 
 ```kotlin
-class H2AgentTest : JdbcAgentBehaviorTest() {
+class H2ExecutionBehaviorTest : JdbcExecutionBehaviorTest() {
     override fun createConnectedAgent(databaseName: String): DatabaseAgent {
-        return H2Agent().apply {
-            connect(ConnectParams(database = "mem:$databaseName;DB_CLOSE_DELAY=-1"))
-        }
+        return createH2Agent(databaseName)
     }
 
     override fun resultSetSql(): String = "CALL 42"
     override fun expectedResultSetColumns(): List<String> = listOf("42")
     override fun expectedResultSetRows(): List<List<Any?>> = listOf(listOf(42))
     override fun rowsSql(rowCount: Int): String = "SELECT X FROM SYSTEM_RANGE(1, $rowCount)"
+}
+
+class H2MetadataBehaviorTest : JdbcMetadataBehaviorTest() {
+    override fun createConnectedAgent(databaseName: String): DatabaseAgent {
+        return createH2Agent(databaseName)
+    }
 
     override fun metadataFixtureSql(): List<String> = listOf(
         "CREATE TABLE BETA_TABLE (ID INT PRIMARY KEY)",
@@ -198,9 +202,15 @@ class H2AgentTest : JdbcAgentBehaviorTest() {
     override fun metadataColumnsTable(): String = "COLUMN_ORDER_SAMPLE"
     override fun expectedColumnsInOrder(): List<String> = listOf("ID", "NAME", "CREATED_AT")
 }
+
+private fun createH2Agent(databaseName: String): DatabaseAgent {
+    return H2Agent().apply {
+        connect(ConnectParams(database = "mem:$databaseName;DB_CLOSE_DELAY=-1"))
+    }
+}
 ```
 
-`JdbcAgentBehaviorTest` verifies non-`SELECT` result set execution, max-row truncation boundaries, transaction control statements, and stable metadata ordering.
+`JdbcExecutionBehaviorTest` verifies non-`SELECT` result set execution, max-row truncation boundaries, and transaction control statements. `JdbcMetadataBehaviorTest` verifies stable metadata ordering. Agents with limited local test infrastructure can adopt the execution contract first and add the metadata contract later.
 
 For agents that need unavailable commercial or external drivers, use `test-support`:
 
