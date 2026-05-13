@@ -15,7 +15,9 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 21
+          java-version: |
+            8
+            21
       - uses: gradle/actions/setup-gradle@v4
       - run: ./gradlew shadowJar
       - uses: actions/upload-artifact@v4
@@ -25,24 +27,31 @@ jobs:
 
   build-jre:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - jre-key: "17"
+            java-version: "21"
+            modules: "java.base,java.sql,java.sql.rowset,java.naming,java.management,java.desktop,java.security.jgss,java.security.sasl,jdk.charsets"
     steps:
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 21
+          java-version: ${{ matrix.java-version }}
       - name: Build JRE for all platforms
         shell: bash
         run: |
-          MODULES="java.base,java.sql,java.sql.rowset,java.naming,java.management,java.desktop,java.security.jgss,java.security.sasl,jdk.charsets"
+          MODULES="${{ matrix.modules }}"
           JLINK_OPTS="--strip-debug --no-header-files --no-man-pages --compress=zip-6"
+          JRE_KEY="${{ matrix.jre-key }}"
 
           # Build native linux-x64 JRE via jlink
           jlink --add-modules $MODULES $JLINK_OPTS --output dbx-jre
-          tar czf dbx-jre-linux-x64.tar.gz dbx-jre
+          tar czf dbx-jre-${JRE_KEY}-linux-x64.tar.gz dbx-jre
           rm -rf dbx-jre
 
           # Download and jlink for other platforms
-          ADOPTIUM="https://api.adoptium.net/v3/binary/latest/21/ga"
+          ADOPTIUM="https://api.adoptium.net/v3/binary/latest/${{ matrix.java-version }}/ga"
           declare -A PLATFORMS=(
             ["macos-aarch64"]="mac/aarch64"
             ["macos-x64"]="mac/x64"
@@ -72,18 +81,57 @@ jobs:
               JMODS="$JAVA_HOME_CROSS/jmods"
             fi
             jlink --module-path "$JMODS" --add-modules $MODULES $JLINK_OPTS --output dbx-jre
-            tar czf dbx-jre-$platform.tar.gz dbx-jre
+            tar czf dbx-jre-${JRE_KEY}-$platform.tar.gz dbx-jre
             rm -rf dbx-jre jdk-$platform
           done
 
           ls -lh dbx-jre-*.tar.gz
       - uses: actions/upload-artifact@v4
         with:
-          name: jre-all
+          name: jre-${{ matrix.jre-key }}
           path: "dbx-jre-*.tar.gz"
 
+  build-jre8:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Adoptium JRE 8 for all platforms
+        shell: bash
+        run: |
+          ADOPTIUM="https://api.adoptium.net/v3/binary/latest/8/ga"
+          declare -A PLATFORMS=(
+            ["linux-x64"]="linux/x64"
+            ["linux-aarch64"]="linux/aarch64"
+            ["macos-aarch64"]="mac/aarch64"
+            ["macos-x64"]="mac/x64"
+            ["windows-x64"]="windows/x64"
+          )
+          for platform in "${!PLATFORMS[@]}"; do
+            os_arch="${PLATFORMS[$platform]}"
+            echo "=== Downloading JRE 8 for $platform ($os_arch) ==="
+            if [[ "$platform" == windows-* ]]; then
+              curl -L -o jre8-$platform.zip "$ADOPTIUM/$os_arch/jre/hotspot/normal/eclipse?project=jdk"
+              mkdir -p jre8-extract
+              unzip -q jre8-$platform.zip -d jre8-extract
+              mv jre8-extract/*/ dbx-jre || mv jre8-extract/* dbx-jre
+              rm -rf jre8-extract jre8-$platform.zip
+            else
+              curl -L -o jre8-$platform.tar.gz "$ADOPTIUM/$os_arch/jre/hotspot/normal/eclipse?project=jdk"
+              mkdir -p dbx-jre
+              tar xzf jre8-$platform.tar.gz -C dbx-jre --strip-components=1
+              rm -f jre8-$platform.tar.gz
+            fi
+            tar czf dbx-jre-8-$platform.tar.gz dbx-jre
+            rm -rf dbx-jre
+          done
+
+          ls -lh dbx-jre-8-*.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: jre-8
+          path: "dbx-jre-8-*.tar.gz"
+
   release:
-    needs: [build-agents, build-jre]
+    needs: [build-agents, build-jre, build-jre8]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -103,7 +151,7 @@ jobs:
           REPO="${GITHUB_REPOSITORY}"
 
           generate_jar_entry() {
-            local name="$1" label="$2" file="$3"
+            local name="$1" label="$2" file="$3" jre_key="$4"
             local sha256=$(sha256sum "$file" | cut -d' ' -f1)
             local size=$(stat -c%s "$file")
             local url="https://github.com/${REPO}/releases/download/${TAG}/$(basename $file)"
@@ -112,45 +160,65 @@ jobs:
                 "version": "${TAG#v}",
                 "label": "${label}",
                 "min_app_version": "0.6.0",
+                "jre": "${jre_key}",
                 "jar": { "url": "${url}", "sha256": "${sha256}", "size": ${size} }
               }
           ENTRY
           }
 
-          generate_jre_entry() {
-            local platform="$1" file="$2"
-            local sha256=$(sha256sum "$file" | cut -d' ' -f1)
-            local size=$(stat -c%s "$file")
-            local url="https://github.com/${REPO}/releases/download/${TAG}/$(basename $file)"
-            cat <<ENTRY
-                "${platform}": { "url": "${url}", "sha256": "${sha256}", "size": ${size} }
-          ENTRY
+          generate_jre_platforms() {
+            local jre_key="$1"
+            local PLATFORMS=""
+            for f in release/dbx-jre-${jre_key}-*.tar.gz; do
+              [ ! -f "$f" ] && continue
+              p=$(basename "$f" .tar.gz | sed "s/dbx-jre-${jre_key}-//")
+              sha256=$(sha256sum "$f" | cut -d' ' -f1)
+              size=$(stat -c%s "$f")
+              url="https://github.com/${REPO}/releases/download/${TAG}/$(basename $f)"
+              [ -n "$PLATFORMS" ] && PLATFORMS="${PLATFORMS},"$'\n'
+              PLATFORMS="${PLATFORMS}              \"${p}\": { \"url\": \"${url}\", \"sha256\": \"${sha256}\", \"size\": ${size} }"
+            done
+            echo "$PLATFORMS"
           }
 
-          # Build platforms JSON
-          PLATFORMS=""
-          for f in release/dbx-jre-*.tar.gz; do
-            p=$(basename "$f" .tar.gz | sed 's/dbx-jre-//')
-            [ -n "$PLATFORMS" ] && PLATFORMS="${PLATFORMS},"$'\n'
-            PLATFORMS="${PLATFORMS}$(generate_jre_entry "$p" "$f")"
-          done
+          # Detect JRE key from jar name: oracle-10g → "8", everything else → "17"
+          detect_jre_key() {
+            local name="$1"
+            case "$name" in
+              oracle-10g) echo "8" ;;
+              *) echo "17" ;;
+            esac
+          }
 
-          # Build drivers JSON — auto-detect all agent JARs, read label from manifest
+          # Build jres JSON
+          JRE17_PLATFORMS=$(generate_jre_platforms "17")
+          JRE8_PLATFORMS=$(generate_jre_platforms "8")
+
+          # Build drivers JSON
           DRIVERS=""
           for f in release/dbx-agent-*.jar; do
             name=$(basename "$f" .jar | sed 's/dbx-agent-//')
             label=$(unzip -p "$f" META-INF/MANIFEST.MF | grep -i "Agent-Label" | cut -d: -f2 | tr -d ' \r' || echo "$name")
             [ -z "$label" ] && label="$name"
+            jre_key=$(detect_jre_key "$name")
             [ -n "$DRIVERS" ] && DRIVERS="${DRIVERS},"$'\n'
-            DRIVERS="${DRIVERS}$(generate_jar_entry "$name" "$label" "$f")"
+            DRIVERS="${DRIVERS}$(generate_jar_entry "$name" "$label" "$f" "$jre_key")"
           done
 
           cat > release/agent-registry.json <<EOF
           {
-            "jre": {
-              "version": "21.0.11",
-              "platforms": {
-          ${PLATFORMS}
+            "jres": {
+              "17": {
+                "version": "21.0.11",
+                "platforms": {
+          ${JRE17_PLATFORMS}
+                }
+              },
+              "8": {
+                "version": "8u442",
+                "platforms": {
+          ${JRE8_PLATFORMS}
+                }
               }
             },
             "drivers": {
