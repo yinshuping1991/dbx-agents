@@ -69,6 +69,7 @@ class OracleAgent : DatabaseAgent {
         val props = Properties()
         props["user"] = params.username
         props["password"] = params.password
+        props["oracle.jdbc.defaultNChar"] = "true"
 
         // Support SYSDBA connections: database = "SYSDBA:serviceName"
         if (serviceName.uppercase().startsWith("SYSDBA:")) {
@@ -78,6 +79,7 @@ class OracleAgent : DatabaseAgent {
 
         val url = "jdbc:oracle:thin:@${params.host}:${params.port}/$serviceName"
         connection = DriverManager.getConnection(url, props)
+        connection!!.createStatement().use { it.execute("ALTER SESSION SET NLS_LANGUAGE='AMERICAN'") }
     }
 
     override fun testConnection(params: ConnectParams): Boolean {
@@ -86,6 +88,7 @@ class OracleAgent : DatabaseAgent {
         val props = Properties()
         props["user"] = params.username
         props["password"] = params.password
+        props["oracle.jdbc.defaultNChar"] = "true"
 
         if (serviceName.uppercase().startsWith("SYSDBA:")) {
             serviceName = serviceName.substring(7)
