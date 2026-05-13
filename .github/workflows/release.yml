@@ -52,9 +52,18 @@ jobs:
           for platform in "${!PLATFORMS[@]}"; do
             os_arch="${PLATFORMS[$platform]}"
             echo "=== Downloading JDK for $platform ($os_arch) ==="
-            curl -L -o jdk-$platform.tar.gz "$ADOPTIUM/$os_arch/jdk/hotspot/normal/eclipse?project=jdk"
-            mkdir -p jdk-$platform
-            tar xzf jdk-$platform.tar.gz -C jdk-$platform --strip-components=1
+            if [[ "$platform" == windows-* ]]; then
+              curl -L -o jdk-$platform.zip "$ADOPTIUM/$os_arch/jdk/hotspot/normal/eclipse?project=jdk"
+              mkdir -p jdk-$platform
+              unzip -q jdk-$platform.zip -d jdk-$platform-tmp
+              mv jdk-$platform-tmp/*/* jdk-$platform/ || mv jdk-$platform-tmp/* jdk-$platform/
+              rm -rf jdk-$platform-tmp jdk-$platform.zip
+            else
+              curl -L -o jdk-$platform.tar.gz "$ADOPTIUM/$os_arch/jdk/hotspot/normal/eclipse?project=jdk"
+              mkdir -p jdk-$platform
+              tar xzf jdk-$platform.tar.gz -C jdk-$platform --strip-components=1
+              rm -f jdk-$platform.tar.gz
+            fi
             JAVA_HOME_CROSS="jdk-$platform"
             # Find jmods directory
             if [ -d "$JAVA_HOME_CROSS/Contents/Home/jmods" ]; then
@@ -64,7 +73,7 @@ jobs:
             fi
             jlink --module-path "$JMODS" --add-modules $MODULES $JLINK_OPTS --output dbx-jre
             tar czf dbx-jre-$platform.tar.gz dbx-jre
-            rm -rf dbx-jre jdk-$platform jdk-$platform.tar.gz
+            rm -rf dbx-jre jdk-$platform
           done
 
           ls -lh dbx-jre-*.tar.gz
