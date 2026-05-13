@@ -12,7 +12,6 @@ class Neo4jAgent : DatabaseAgent {
 
     companion object {
         private const val MAX_ROWS = 10000
-        private val QUERY_PREFIXES = listOf("MATCH", "RETURN", "WITH", "CALL", "SHOW", "UNWIND", "OPTIONAL")
     }
 
     override fun setSchemaSQL(schema: String): String = ""
@@ -140,6 +139,29 @@ class Neo4jAgent : DatabaseAgent {
         return emptyList()
     }
 
+    override fun executeTransaction(statements: List<String>, schema: String?): QueryResult {
+        val conn = requireConnection()
+        val savedAutoCommit = conn.autoCommit
+        conn.autoCommit = false
+        val start = System.currentTimeMillis()
+        try {
+            var totalAffected = 0L
+            for (sql in statements) {
+                conn.createStatement().use { stmt ->
+                    stmt.execute(sql.trim().trimEnd(';'))
+                    totalAffected += stmt.updateCount.coerceAtLeast(0).toLong()
+                }
+            }
+            conn.commit()
+            return QueryResult(emptyList(), emptyList(), totalAffected, System.currentTimeMillis() - start)
+        } catch (e: Exception) {
+            conn.rollback()
+            throw e
+        } finally {
+            conn.autoCommit = savedAutoCommit
+        }
+    }
+
     override fun executeQuery(sql: String, schema: String?): QueryResult {
         val conn = requireConnection()
         val trimmedSql = sql.trim().trimEnd(';')
@@ -165,12 +187,10 @@ class Neo4jAgent : DatabaseAgent {
         }
 
         val startTime = System.currentTimeMillis()
-        // Neo4j uses Cypher — queries that return data typically start with MATCH/RETURN/CALL/WITH/SHOW
-        val isQuery = QUERY_PREFIXES.any { upperSql.startsWith(it) }
-
-        if (isQuery) {
-            conn.createStatement().use { stmt ->
-                stmt.executeQuery(trimmedSql).use { rs ->
+        conn.createStatement().use { stmt ->
+            val hasResultSet = stmt.execute(trimmedSql)
+            if (hasResultSet) {
+                stmt.resultSet.use { rs ->
                     val meta = rs.metaData
                     val colCount = meta.columnCount
                     val columns = (1..colCount).map { meta.getColumnLabel(it) }
@@ -191,15 +211,13 @@ class Neo4jAgent : DatabaseAgent {
                         truncated = rows.size >= MAX_ROWS
                     )
                 }
-            }
-        } else {
-            conn.createStatement().use { stmt ->
-                val affected = stmt.executeUpdate(trimmedSql)
+            } else {
+                val updateCount = stmt.updateCount
                 val elapsed = System.currentTimeMillis() - startTime
                 return QueryResult(
                     columns = emptyList(),
                     rows = emptyList(),
-                    affected_rows = affected.toLong(),
+                    affected_rows = updateCount.coerceAtLeast(0).toLong(),
                     execution_time_ms = elapsed,
                     truncated = false
                 )

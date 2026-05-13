@@ -7,6 +7,8 @@ dependencies {
     implementation(project(":common"))
     implementation(fileTree("libs") { include("*.jar") })
     implementation("org.neo4j:neo4j-jdbc-full-bundle:6.10.0")
+    testImplementation(kotlin("test"))
+    testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
 }
 
 kotlin {
@@ -19,4 +21,8 @@ tasks.shadowJar {
     manifest {
         attributes("Agent-Label" to "Neo4j", "Main-Class" to "com.dbx.agent.neo4j.Neo4jAgentKt")
     }
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
