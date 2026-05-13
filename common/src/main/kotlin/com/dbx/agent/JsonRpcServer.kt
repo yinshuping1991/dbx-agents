@@ -64,7 +64,13 @@ class JsonRpcServer(private val agent: DatabaseAgent) {
                 mapOf("ok" to true)
             }
             "list_databases" -> agent.listDatabases()
-            "list_schemas" -> agent.listSchemas()
+            "list_schemas" -> {
+                val database = params.stringOrNull("database")
+                if (!database.isNullOrBlank()) {
+                    agent.getConnection()?.catalog = database
+                }
+                agent.listSchemas()
+            }
             "list_tables" -> agent.listTables(params.get("schema").asString)
             "get_columns" -> agent.getColumns(
                 params.get("schema").asString,

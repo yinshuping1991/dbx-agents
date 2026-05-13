@@ -9,6 +9,7 @@ import java.sql.Types
 class H2Agent : DatabaseAgent {
 
     private var connection: Connection? = null
+    private var databaseName: String = ""
 
     override fun getConnection(): Connection? = connection
 
@@ -25,6 +26,7 @@ class H2Agent : DatabaseAgent {
             "jdbc:h2:tcp://${params.host}:${params.port}/${params.database}"
         }
         connection = DriverManager.getConnection(url, params.username, params.password)
+        databaseName = params.database
     }
 
     override fun testConnection(params: ConnectParams): Boolean {
@@ -40,20 +42,7 @@ class H2Agent : DatabaseAgent {
     }
 
     override fun listDatabases(): List<DatabaseInfo> {
-        val conn = requireConnection()
-        return try {
-            conn.createStatement().use { stmt ->
-                stmt.executeQuery("SHOW DATABASES").use { rs ->
-                    buildList {
-                        while (rs.next()) {
-                            add(DatabaseInfo(rs.getString(1)))
-                        }
-                    }
-                }
-            }
-        } catch (_: Exception) {
-            listOf(DatabaseInfo("default"))
-        }
+        return listOf(DatabaseInfo(databaseName.ifBlank { "default" }))
     }
 
     override fun listSchemas(): List<String> {
@@ -73,6 +62,7 @@ class H2Agent : DatabaseAgent {
 
     override fun listTables(schema: String): List<TableInfo> {
         val conn = requireConnection()
+        val effectiveSchema = resolveSchema(schema)
         conn.prepareStatement(
             """
             SELECT TABLE_NAME, TABLE_TYPE
@@ -81,7 +71,7 @@ class H2Agent : DatabaseAgent {
             ORDER BY TABLE_NAME
             """.trimIndent()
         ).use { stmt ->
-            stmt.setString(1, schema)
+            stmt.setString(1, effectiveSchema)
             stmt.executeQuery().use { rs ->
                 return buildList {
                     while (rs.next()) {
@@ -97,17 +87,21 @@ class H2Agent : DatabaseAgent {
 
     override fun getColumns(schema: String, table: String): List<ColumnInfo> {
         val conn = requireConnection()
+        val effectiveSchema = resolveSchema(schema)
 
         // Get primary key columns
         val primaryKeys = mutableSetOf<String>()
         conn.prepareStatement(
             """
-            SELECT COLUMN_NAME
-            FROM INFORMATION_SCHEMA.INDEXES
-            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND PRIMARY_KEY = TRUE
+            SELECT ic.COLUMN_NAME
+            FROM INFORMATION_SCHEMA.INDEX_COLUMNS ic
+            JOIN INFORMATION_SCHEMA.INDEXES i
+              ON ic.INDEX_SCHEMA = i.INDEX_SCHEMA AND ic.INDEX_NAME = i.INDEX_NAME
+            WHERE ic.TABLE_SCHEMA = ? AND ic.TABLE_NAME = ?
+              AND i.INDEX_TYPE_NAME = 'PRIMARY KEY'
             """.trimIndent()
         ).use { stmt ->
-            stmt.setString(1, schema)
+            stmt.setString(1, effectiveSchema)
             stmt.setString(2, table)
             stmt.executeQuery().use { rs ->
                 while (rs.next()) {
@@ -126,7 +120,7 @@ class H2Agent : DatabaseAgent {
             ORDER BY ORDINAL_POSITION
             """.trimIndent()
         ).use { stmt ->
-            stmt.setString(1, schema)
+            stmt.setString(1, effectiveSchema)
             stmt.setString(2, table)
             stmt.executeQuery().use { rs ->
                 return buildList {
@@ -152,15 +146,18 @@ class H2Agent : DatabaseAgent {
 
     override fun listIndexes(schema: String, table: String): List<IndexInfo> {
         val conn = requireConnection()
+        val effectiveSchema = resolveSchema(schema)
         conn.prepareStatement(
             """
-            SELECT INDEX_NAME, COLUMN_NAME, NON_UNIQUE, PRIMARY_KEY, INDEX_TYPE_NAME
-            FROM INFORMATION_SCHEMA.INDEXES
-            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
-            ORDER BY INDEX_NAME, ORDINAL_POSITION
+            SELECT i.INDEX_NAME, ic.COLUMN_NAME, ic.IS_UNIQUE, i.INDEX_TYPE_NAME
+            FROM INFORMATION_SCHEMA.INDEX_COLUMNS ic
+            JOIN INFORMATION_SCHEMA.INDEXES i
+              ON ic.INDEX_SCHEMA = i.INDEX_SCHEMA AND ic.INDEX_NAME = i.INDEX_NAME
+            WHERE ic.TABLE_SCHEMA = ? AND ic.TABLE_NAME = ?
+            ORDER BY i.INDEX_NAME, ic.ORDINAL_POSITION
             """.trimIndent()
         ).use { stmt ->
-            stmt.setString(1, schema)
+            stmt.setString(1, effectiveSchema)
             stmt.setString(2, table)
             stmt.executeQuery().use { rs ->
                 val indexMap = linkedMapOf<String, MutableList<String>>()
@@ -171,13 +168,12 @@ class H2Agent : DatabaseAgent {
                 while (rs.next()) {
                     val indexName = rs.getString("INDEX_NAME")
                     val colName = rs.getString("COLUMN_NAME")
-                    val nonUnique = rs.getBoolean("NON_UNIQUE")
-                    val isPrimary = rs.getBoolean("PRIMARY_KEY")
+                    val isUnique = rs.getBoolean("IS_UNIQUE")
                     val indexType = rs.getString("INDEX_TYPE_NAME")
 
                     indexMap.getOrPut(indexName) { mutableListOf() }.add(colName)
-                    uniqueMap[indexName] = !nonUnique
-                    primaryMap[indexName] = isPrimary
+                    uniqueMap[indexName] = isUnique
+                    primaryMap[indexName] = indexType == "PRIMARY KEY"
                     typeMap[indexName] = indexType ?: ""
                 }
 
@@ -196,6 +192,7 @@ class H2Agent : DatabaseAgent {
 
     override fun listForeignKeys(schema: String, table: String): List<ForeignKeyInfo> {
         val conn = requireConnection()
+        val effectiveSchema = resolveSchema(schema)
         conn.prepareStatement(
             """
             SELECT FK_NAME, FKCOLUMN_NAME, PKTABLE_NAME, PKCOLUMN_NAME
@@ -204,7 +201,7 @@ class H2Agent : DatabaseAgent {
             ORDER BY FK_NAME
             """.trimIndent()
         ).use { stmt ->
-            stmt.setString(1, schema)
+            stmt.setString(1, effectiveSchema)
             stmt.setString(2, table)
             stmt.executeQuery().use { rs ->
                 return buildList {
@@ -223,6 +220,7 @@ class H2Agent : DatabaseAgent {
 
     override fun listTriggers(schema: String, table: String): List<TriggerInfo> {
         val conn = requireConnection()
+        val effectiveSchema = resolveSchema(schema)
         conn.prepareStatement(
             """
             SELECT TRIGGER_NAME, EVENT_MANIPULATION, ACTION_TIMING
@@ -231,7 +229,7 @@ class H2Agent : DatabaseAgent {
             ORDER BY TRIGGER_NAME
             """.trimIndent()
         ).use { stmt ->
-            stmt.setString(1, schema)
+            stmt.setString(1, effectiveSchema)
             stmt.setString(2, table)
             stmt.executeQuery().use { rs ->
                 return buildList {
@@ -333,6 +331,13 @@ class H2Agent : DatabaseAgent {
 
     private fun requireConnection(): Connection {
         return connection ?: throw IllegalStateException("Not connected")
+    }
+
+    private fun resolveSchema(schema: String): String {
+        if (schema.equals("PUBLIC", ignoreCase = true) || schema.equals("INFORMATION_SCHEMA", ignoreCase = true)) {
+            return schema.uppercase()
+        }
+        return "PUBLIC"
     }
 }
 
