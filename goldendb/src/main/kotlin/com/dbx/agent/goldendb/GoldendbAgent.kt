@@ -125,7 +125,9 @@ class GoldendbAgent : DatabaseAgent {
     override fun listIndexes(schema: String, table: String): List<IndexInfo> {
         val conn = connection ?: throw IllegalStateException("Not connected")
         conn.createStatement().use { stmt ->
-            stmt.executeQuery("SHOW INDEX FROM `$table` FROM `$schema`").use { rs ->
+            val quotedTable = JdbcIdentifiers.backtick(table)
+            val quotedSchema = JdbcIdentifiers.backtick(schema)
+            stmt.executeQuery("SHOW INDEX FROM $quotedTable FROM $quotedSchema").use { rs ->
                 val indexMap = linkedMapOf<String, MutableList<Pair<Int, String>>>()
                 val uniqueMap = mutableMapOf<String, Boolean>()
                 val typeMap = mutableMapOf<String, String>()
@@ -142,7 +144,7 @@ class GoldendbAgent : DatabaseAgent {
                     typeMap[indexName] = indexType
                 }
 
-                return indexMap.map { (name, cols) ->
+                return indexMap.toSortedMap().map { (name, cols) ->
                     IndexInfo(
                         name = name,
                         columns = cols.sortedBy { it.first }.map { it.second },

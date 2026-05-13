@@ -45,8 +45,9 @@ class BigQueryAgent : DatabaseAgent {
     override fun listTables(schema: String): List<TableInfo> {
         val conn = connection ?: throw IllegalStateException("Not connected")
         val result = mutableListOf<TableInfo>()
+        val quotedSchema = JdbcIdentifiers.backtick(schema)
         conn.prepareStatement(
-            "SELECT table_name, table_type FROM `$schema`.INFORMATION_SCHEMA.TABLES ORDER BY table_name"
+            "SELECT table_name, table_type FROM $quotedSchema.INFORMATION_SCHEMA.TABLES ORDER BY table_name"
         ).use { stmt ->
             stmt.executeQuery().use { rs ->
                 while (rs.next()) {
@@ -63,10 +64,11 @@ class BigQueryAgent : DatabaseAgent {
     override fun getColumns(schema: String, table: String): List<ColumnInfo> {
         val conn = connection ?: throw IllegalStateException("Not connected")
         val result = mutableListOf<ColumnInfo>()
+        val quotedSchema = JdbcIdentifiers.backtick(schema)
         conn.prepareStatement(
             """
             SELECT column_name, data_type, is_nullable
-            FROM `$schema`.INFORMATION_SCHEMA.COLUMNS
+            FROM $quotedSchema.INFORMATION_SCHEMA.COLUMNS
             WHERE table_name = ?
             ORDER BY ordinal_position
             """.trimIndent()

@@ -32,7 +32,7 @@ class HiveAgent : DatabaseAgent {
                     while (rs.next()) {
                         add(DatabaseInfo(rs.getString(1)))
                     }
-                }
+                }.sortedBy { it.name }
             }
         }
     }
@@ -45,7 +45,7 @@ class HiveAgent : DatabaseAgent {
         val conn = requireConnection()
         // Switch to the target database first
         conn.createStatement().use { stmt ->
-            stmt.execute("USE $schema")
+            stmt.execute("USE ${JdbcIdentifiers.backtick(schema)}")
         }
         conn.createStatement().use { stmt ->
             stmt.executeQuery("SHOW TABLES").use { rs ->
@@ -56,7 +56,7 @@ class HiveAgent : DatabaseAgent {
                             table_type = "TABLE"
                         ))
                     }
-                }
+                }.sortedBy { it.name }
             }
         }
     }
@@ -65,10 +65,10 @@ class HiveAgent : DatabaseAgent {
         val conn = requireConnection()
         // Switch to the target database first
         conn.createStatement().use { stmt ->
-            stmt.execute("USE $schema")
+            stmt.execute("USE ${JdbcIdentifiers.backtick(schema)}")
         }
         conn.createStatement().use { stmt ->
-            stmt.executeQuery("DESCRIBE $table").use { rs ->
+            stmt.executeQuery("DESCRIBE ${JdbcIdentifiers.backtick(table)}").use { rs ->
                 return buildList {
                     while (rs.next()) {
                         val colName = rs.getString(1)?.trim() ?: continue

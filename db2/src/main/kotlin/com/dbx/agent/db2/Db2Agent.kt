@@ -136,7 +136,7 @@ class Db2Agent : DatabaseAgent {
 
     override fun listIndexes(schema: String, table: String): List<IndexInfo> {
         val conn = requireConnection()
-        val sql = "SELECT INDNAME, COLNAMES, UNIQUERULE FROM SYSCAT.INDEXES WHERE TABSCHEMA = ? AND TABNAME = ?"
+        val sql = "SELECT INDNAME, COLNAMES, UNIQUERULE FROM SYSCAT.INDEXES WHERE TABSCHEMA = ? AND TABNAME = ? ORDER BY INDNAME"
         conn.prepareStatement(sql).use { stmt ->
             stmt.setString(1, schema)
             stmt.setString(2, table)
@@ -163,7 +163,7 @@ class Db2Agent : DatabaseAgent {
 
     override fun listForeignKeys(schema: String, table: String): List<ForeignKeyInfo> {
         val conn = requireConnection()
-        val sql = "SELECT CONSTNAME, FK_COLNAMES, REFTABNAME, PK_COLNAMES FROM SYSCAT.REFERENCES WHERE TABSCHEMA = ? AND TABNAME = ?"
+        val sql = "SELECT CONSTNAME, FK_COLNAMES, REFTABNAME, PK_COLNAMES FROM SYSCAT.REFERENCES WHERE TABSCHEMA = ? AND TABNAME = ? ORDER BY CONSTNAME"
         conn.prepareStatement(sql).use { stmt ->
             stmt.setString(1, schema)
             stmt.setString(2, table)
@@ -193,7 +193,7 @@ class Db2Agent : DatabaseAgent {
 
     override fun listTriggers(schema: String, table: String): List<TriggerInfo> {
         val conn = requireConnection()
-        val sql = "SELECT TRIGNAME, TRIGEVENT, TRIGTIME FROM SYSCAT.TRIGGERS WHERE TABSCHEMA = ? AND TABNAME = ?"
+        val sql = "SELECT TRIGNAME, TRIGEVENT, TRIGTIME FROM SYSCAT.TRIGGERS WHERE TABSCHEMA = ? AND TABNAME = ? ORDER BY TRIGNAME"
         conn.prepareStatement(sql).use { stmt ->
             stmt.setString(1, schema)
             stmt.setString(2, table)

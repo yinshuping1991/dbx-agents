@@ -35,7 +35,7 @@ class Neo4jAgent : DatabaseAgent {
                     while (rs.next()) {
                         add(DatabaseInfo(rs.getString("name")))
                     }
-                }
+                }.sortedBy { it.name }
             }
         }
     }
@@ -57,7 +57,7 @@ class Neo4jAgent : DatabaseAgent {
                             table_type = "TABLE"
                         ))
                     }
-                }
+                }.sortedBy { it.name }
             }
         }
     }
@@ -91,7 +91,7 @@ class Neo4jAgent : DatabaseAgent {
                             ))
                         }
                     }
-                }
+                }.sortedBy { it.name }
             }
         }
     }
@@ -121,7 +121,7 @@ class Neo4jAgent : DatabaseAgent {
                             ))
                         }
                     }
-                }
+                }.sortedBy { it.name }
             }
         }
     }

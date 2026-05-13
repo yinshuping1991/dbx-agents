@@ -34,7 +34,7 @@ class SnowflakeAgent : DatabaseAgent {
                     while (rs.next()) {
                         add(DatabaseInfo(rs.getString("name")))
                     }
-                }
+                }.sortedBy { it.name }
             }
         }
     }
@@ -47,7 +47,7 @@ class SnowflakeAgent : DatabaseAgent {
                     while (rs.next()) {
                         add(rs.getString("name"))
                     }
-                }
+                }.sorted()
             }
         }
     }
@@ -84,7 +84,8 @@ class SnowflakeAgent : DatabaseAgent {
         val primaryKeys = mutableSetOf<String>()
         try {
             conn.createStatement().use { stmt ->
-                stmt.executeQuery("SHOW PRIMARY KEYS IN TABLE \"$schema\".\"$table\"").use { rs ->
+                val qualifiedTable = "${JdbcIdentifiers.doubleQuote(schema)}.${JdbcIdentifiers.doubleQuote(table)}"
+                stmt.executeQuery("SHOW PRIMARY KEYS IN TABLE $qualifiedTable").use { rs ->
                     while (rs.next()) {
                         primaryKeys.add(rs.getString("column_name"))
                     }
@@ -136,7 +137,8 @@ class SnowflakeAgent : DatabaseAgent {
         val conn = requireConnection()
         return try {
             conn.createStatement().use { stmt ->
-                stmt.executeQuery("SHOW IMPORTED KEYS IN TABLE \"$schema\".\"$table\"").use { rs ->
+                val qualifiedTable = "${JdbcIdentifiers.doubleQuote(schema)}.${JdbcIdentifiers.doubleQuote(table)}"
+                stmt.executeQuery("SHOW IMPORTED KEYS IN TABLE $qualifiedTable").use { rs ->
                     buildList {
                         while (rs.next()) {
                             add(ForeignKeyInfo(

@@ -126,7 +126,9 @@ class SundbAgent : DatabaseAgent {
     override fun listIndexes(schema: String, table: String): List<IndexInfo> {
         val conn = connection ?: throw IllegalStateException("Not connected")
         conn.createStatement().use { stmt ->
-            stmt.executeQuery("SHOW INDEX FROM `$table` FROM `$schema`").use { rs ->
+            val quotedTable = JdbcIdentifiers.backtick(table)
+            val quotedSchema = JdbcIdentifiers.backtick(schema)
+            stmt.executeQuery("SHOW INDEX FROM $quotedTable FROM $quotedSchema").use { rs ->
                 val indexMap = linkedMapOf<String, MutableList<Pair<Int, String>>>()
                 val uniqueMap = mutableMapOf<String, Boolean>()
                 val typeMap = mutableMapOf<String, String>()

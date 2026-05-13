@@ -35,7 +35,7 @@ class CassandraAgent : DatabaseAgent {
                     while (rs.next()) {
                         add(DatabaseInfo(rs.getString(1)))
                     }
-                }
+                }.sortedBy { it.name }
             }
         }
     }
@@ -57,7 +57,7 @@ class CassandraAgent : DatabaseAgent {
                             table_type = "TABLE"
                         ))
                     }
-                }
+                }.sortedBy { it.name }
             }
         }
     }
@@ -111,7 +111,7 @@ class CassandraAgent : DatabaseAgent {
                             index_type = null
                         ))
                     }
-                }
+                }.sortedBy { it.name }
             }
         }
     }

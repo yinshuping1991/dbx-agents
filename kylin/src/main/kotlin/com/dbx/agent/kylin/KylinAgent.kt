@@ -34,7 +34,7 @@ class KylinAgent : DatabaseAgent {
                 result.add(DatabaseInfo(it.getString("TABLE_CAT")))
             }
         }
-        return result
+        return result.sortedBy { it.name }
     }
 
     override fun listSchemas(): List<String> {
@@ -54,7 +54,7 @@ class KylinAgent : DatabaseAgent {
                 result.add(TableInfo(it.getString("TABLE_NAME"), tableType))
             }
         }
-        return result
+        return result.sortedBy { it.name }
     }
 
     override fun getColumns(schema: String, table: String): List<ColumnInfo> {
