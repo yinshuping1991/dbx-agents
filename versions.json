@@ -16,5 +16,6 @@
   "snowflake": "0.1.2",
   "sundb": "0.1.2",
   "trino": "0.1.2",
-  "vastbase": "0.1.2"
+  "vastbase": "0.1.2",
+  "mongodb": "0.1.0"
 }
