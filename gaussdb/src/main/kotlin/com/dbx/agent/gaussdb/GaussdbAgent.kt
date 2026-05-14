@@ -11,14 +11,14 @@ class GaussdbAgent : DatabaseAgent {
 
     override fun getConnection(): Connection? = connection
     override fun connect(params: ConnectParams) {
-        Class.forName("org.postgresql.Driver")
-        val url = "jdbc:postgresql://${params.host}:${params.port}/${params.database}"
+        Class.forName("org.opengauss.Driver")
+        val url = "jdbc:opengauss://${params.host}:${params.port}/${params.database}"
         connection = DriverManager.getConnection(url, params.username, params.password)
     }
 
     override fun testConnection(params: ConnectParams): Boolean {
-        Class.forName("org.postgresql.Driver")
-        val url = "jdbc:postgresql://${params.host}:${params.port}/${params.database}"
+        Class.forName("org.opengauss.Driver")
+        val url = "jdbc:opengauss://${params.host}:${params.port}/${params.database}"
         DriverManager.getConnection(url, params.username, params.password).use { conn ->
             return conn.isValid(5)
         }

@@ -6,7 +6,7 @@ plugins {
 dependencies {
     implementation(project(":common"))
     implementation(fileTree("libs") { include("*.jar") })
-    implementation("org.postgresql:postgresql:42.7.5")
+    implementation("org.opengauss:opengauss-jdbc:6.0.0-og")
     testImplementation(project(":test-support"))
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
