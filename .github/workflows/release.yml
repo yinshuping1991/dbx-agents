@@ -359,3 +359,29 @@ jobs:
         with:
           files: release/*
           body_path: RELEASE_NOTES.md
+
+      - name: Upload to R2
+        run: |
+          # Upload agent-registry.json
+          aws s3 cp release/agent-registry.json \
+            "s3://${{ secrets.R2_BUCKET_NAME }}/agents/agent-registry.json" \
+            --endpoint-url "https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com"
+
+          # Upload JRE archives
+          for f in release/dbx-jre-*.tar.gz; do
+            [ ! -f "$f" ] && continue
+            aws s3 cp "$f" \
+              "s3://${{ secrets.R2_BUCKET_NAME }}/agents/jre/$(basename $f)" \
+              --endpoint-url "https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com"
+          done
+
+          # Upload driver JARs
+          for f in release/dbx-agent-*.jar; do
+            [ ! -f "$f" ] && continue
+            aws s3 cp "$f" \
+              "s3://${{ secrets.R2_BUCKET_NAME }}/agents/drivers/$(basename $f)" \
+              --endpoint-url "https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com"
+          done
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
