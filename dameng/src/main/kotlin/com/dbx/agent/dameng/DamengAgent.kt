@@ -52,7 +52,17 @@ class DamengAgent : DatabaseAgent {
     }
 
     override fun listSchemas(): List<String> {
-        return listDatabases().map { it.name }
+        val conn = requireConnection()
+        val sql = "SELECT DISTINCT OWNER FROM ALL_OBJECTS ORDER BY OWNER"
+        conn.createStatement().use { stmt ->
+            stmt.executeQuery(sql).use { rs ->
+                return buildList {
+                    while (rs.next()) {
+                        add(rs.getString(1))
+                    }
+                }
+            }
+        }
     }
 
     override fun listTables(schema: String): List<TableInfo> {
