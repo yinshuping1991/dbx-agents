@@ -55,7 +55,7 @@ private fun connect(params: JsonObject): Any {
 
 private fun listDatabases(): Any {
     val c = client ?: throw IllegalStateException("Not connected")
-    return c.listDatabaseNames().map { mapOf("name" to it) }
+    return c.listDatabaseNames().toList().map { mapOf("name" to it) }
 }
 
 private fun listCollections(params: JsonObject): Any {
@@ -98,6 +98,10 @@ private fun insertDocument(params: JsonObject): Any {
     return mapOf("inserted_id" to result.insertedId?.asObjectId()?.value?.toHexString())
 }
 
+private fun parseId(id: String): Any {
+    return try { ObjectId(id) } catch (_: Exception) { id }
+}
+
 private fun updateDocument(params: JsonObject): Any {
     val c = client ?: throw IllegalStateException("Not connected")
     val database = params.get("database").asString
@@ -108,7 +112,7 @@ private fun updateDocument(params: JsonObject): Any {
     val col = c.getDatabase(database).getCollection(collection)
     val newDoc = Document.parse(docJson)
     newDoc.remove("_id")
-    val result = col.replaceOne(Document("_id", ObjectId(id)), newDoc)
+    val result = col.replaceOne(Document("_id", parseId(id)), newDoc)
     return mapOf("modified_count" to result.modifiedCount)
 }
 
@@ -119,7 +123,7 @@ private fun deleteDocument(params: JsonObject): Any {
     val id = params.get("id").asString
 
     val col = c.getDatabase(database).getCollection(collection)
-    val result = col.deleteOne(Document("_id", ObjectId(id)))
+    val result = col.deleteOne(Document("_id", parseId(id)))
     return mapOf("deleted_count" to result.deletedCount)
 }
 

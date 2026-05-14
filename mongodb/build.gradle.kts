@@ -4,7 +4,7 @@ plugins {
 }
 
 dependencies {
-    implementation("org.mongodb:mongodb-driver-sync:5.3.1")
+    implementation("org.mongodb:mongodb-driver-sync:4.11.4")
     implementation("com.google.code.gson:gson:2.11.0")
 }
 
