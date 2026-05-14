@@ -147,7 +147,15 @@ jobs:
             else
               JMODS="$JAVA_HOME_CROSS/jmods"
             fi
-            jlink --module-path "$JMODS" --add-modules $MODULES $JLINK_OPTS --output dbx-jre
+            LLVM_OBJCOPY=$(ls /usr/bin/llvm-objcopy-* 2>/dev/null | sort -V | tail -1)
+            if [ -z "$LLVM_OBJCOPY" ]; then LLVM_OBJCOPY=$(which llvm-objcopy 2>/dev/null || true); fi
+            CROSS_OPTS=""
+            if [ -n "$LLVM_OBJCOPY" ]; then
+              CROSS_OPTS="--strip-native-debug-symbols=objcopy=$LLVM_OBJCOPY"
+            else
+              CROSS_OPTS="--disable-plugin strip-native-debug-symbols"
+            fi
+            jlink --module-path "$JMODS" --add-modules $MODULES $JLINK_OPTS $CROSS_OPTS --output dbx-jre
             tar czf dbx-jre-${JRE_KEY}-$platform.tar.gz dbx-jre
             rm -rf dbx-jre jdk-$platform
           done
