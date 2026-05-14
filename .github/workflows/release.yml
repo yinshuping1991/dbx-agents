@@ -12,6 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       versions: ${{ steps.bump.outputs.versions }}
+      prev_versions: ${{ steps.bump.outputs.prev_versions }}
+      prev_tag: ${{ steps.bump.outputs.prev_tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -28,6 +30,7 @@ jobs:
           echo "Comparing $PREV_TAG..HEAD"
 
           VERSIONS=$(cat versions.json)
+          PREV_VERSIONS="$VERSIONS"
           CHANGED=false
 
           for dir in $(echo "$VERSIONS" | python3 -c "import sys,json; [print(k) for k in json.load(sys.stdin)]"); do
@@ -63,6 +66,8 @@ jobs:
           echo "$VERSIONS" > versions.json
           cat versions.json
           echo "versions=$(cat versions.json | python3 -c 'import sys,json; print(json.dumps(json.load(sys.stdin)))')" >> "$GITHUB_OUTPUT"
+          echo "prev_versions=$(echo "$PREV_VERSIONS" | python3 -c 'import sys,json; print(json.dumps(json.load(sys.stdin)))')" >> "$GITHUB_OUTPUT"
+          echo "prev_tag=$PREV_TAG" >> "$GITHUB_OUTPUT"
 
           if [ "$CHANGED" = "true" ]; then
             git config user.name "github-actions[bot]"
@@ -305,8 +310,44 @@ jobs:
           echo "=== agent-registry.json ==="
           cat release/agent-registry.json
 
+      - name: Generate release notes
+        env:
+          MODULE_VERSIONS: ${{ needs.bump-versions.outputs.versions }}
+          PREV_VERSIONS: ${{ needs.bump-versions.outputs.prev_versions }}
+          PREV_TAG: ${{ needs.bump-versions.outputs.prev_tag }}
+        run: |
+          NOTES=""
+          for f in release/dbx-agent-*.jar; do
+            name=$(basename "$f" .jar | sed 's/dbx-agent-//')
+            old_ver=$(echo "$PREV_VERSIONS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('$name',''))")
+            new_ver=$(echo "$MODULE_VERSIONS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('$name',''))")
+            [ "$old_ver" = "$new_ver" ] && continue
+
+            label=$(unzip -p "$f" META-INF/MANIFEST.MF | awk -F': ' 'BEGIN{IGNORECASE=1} /^Agent-Label:/ {sub(/\r$/, "", $2); print $2; exit}' || echo "$name")
+            [ -z "$label" ] && label="$name"
+
+            NOTES="${NOTES}### ${label} (${old_ver} → ${new_ver})"$'\n'
+            while IFS= read -r line; do
+              [ -n "$line" ] && NOTES="${NOTES}- ${line}"$'\n'
+            done < <(git log --oneline "$PREV_TAG"..HEAD -- "$name/" | sed 's/^[0-9a-f]* //')
+
+            # include common changes if any
+            while IFS= read -r line; do
+              [ -n "$line" ] && NOTES="${NOTES}- ${line}"$'\n'
+            done < <(git log --oneline "$PREV_TAG"..HEAD -- common/ | sed 's/^[0-9a-f]* //')
+            NOTES="${NOTES}"$'\n'
+          done
+
+          if [ -z "$NOTES" ]; then
+            NOTES="Routine rebuild, no agent-specific changes."$'\n'
+          fi
+
+          printf "## 更新内容\n\n%s" "$NOTES" > RELEASE_NOTES.md
+          echo "=== Release Notes ==="
+          cat RELEASE_NOTES.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: release/*
-          generate_release_notes: true
+          body_path: RELEASE_NOTES.md
