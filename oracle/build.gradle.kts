@@ -7,6 +7,7 @@ dependencies {
     implementation(project(":common"))
     implementation(fileTree("libs") { include("*.jar") })
     implementation("com.oracle.database.jdbc:ojdbc11:23.7.0.25.01")
+    implementation("com.oracle.database.nls:orai18n:23.7.0.25.01")
     testImplementation(project(":test-support"))
     testImplementation(kotlin("test"))
     testImplementation("org.junit.jupiter:junit-jupiter:5.11.4")
