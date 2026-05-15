@@ -1,4 +1,5 @@
 */libs/*.jar
+gradle.properties
 build/
 .gradle/
 .DS_Store
