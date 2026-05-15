@@ -163,6 +163,49 @@ class OracleAgent : DatabaseAgent {
         }
     }
 
+    override fun listObjects(schema: String): List<ObjectInfo> {
+        val conn = requireConnection()
+        val sql = """
+            SELECT OBJECT_NAME, OBJECT_TYPE FROM ALL_OBJECTS
+            WHERE OWNER = ? AND OBJECT_TYPE IN ('TABLE', 'VIEW', 'PROCEDURE', 'FUNCTION')
+            ORDER BY CASE OBJECT_TYPE WHEN 'TABLE' THEN 0 WHEN 'VIEW' THEN 1 WHEN 'PROCEDURE' THEN 2 ELSE 3 END, OBJECT_NAME
+        """.trimIndent()
+        conn.prepareStatement(sql).use { stmt ->
+            stmt.setString(1, schema)
+            stmt.executeQuery().use { rs ->
+                return buildList {
+                    while (rs.next()) {
+                        add(ObjectInfo(
+                            name = rs.getString(1),
+                            object_type = rs.getString(2),
+                            schema = schema
+                        ))
+                    }
+                }
+            }
+        }
+    }
+
+    override fun getObjectSource(schema: String, name: String, objectType: String): ObjectSource {
+        val conn = requireConnection()
+        val dbmsType = when (objectType.uppercase()) {
+            "VIEW" -> "VIEW"
+            "PROCEDURE" -> "PROCEDURE"
+            "FUNCTION" -> "FUNCTION"
+            else -> throw IllegalArgumentException("Unsupported object type: $objectType")
+        }
+        val sql = "SELECT DBMS_METADATA.GET_DDL(?, ?, ?) FROM DUAL"
+        val source = conn.prepareStatement(sql).use { stmt ->
+            stmt.setString(1, dbmsType)
+            stmt.setString(2, name)
+            stmt.setString(3, schema)
+            stmt.executeQuery().use { rs ->
+                if (rs.next()) rs.getString(1) ?: "" else ""
+            }
+        }
+        return ObjectSource(name = name, object_type = objectType, schema = schema, source = source)
+    }
+
     override fun getColumns(schema: String, table: String): List<ColumnInfo> {
         val conn = requireConnection()
         val sql = """

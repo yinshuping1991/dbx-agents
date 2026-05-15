@@ -78,6 +78,41 @@ class H2Agent : DatabaseAgent {
         }
     }
 
+    override fun listObjects(schema: String): List<ObjectInfo> {
+        val effectiveSchema = resolveSchema(schema)
+        val result = listTables(schema).map { ObjectInfo(name = it.name, object_type = it.table_type, schema = schema, comment = it.comment) }.toMutableList()
+        val conn = requireConnection()
+        conn.prepareStatement(
+            "SELECT ROUTINE_NAME, ROUTINE_TYPE FROM INFORMATION_SCHEMA.ROUTINES WHERE ROUTINE_SCHEMA = ? ORDER BY ROUTINE_NAME"
+        ).use { stmt ->
+            stmt.setString(1, effectiveSchema)
+            stmt.executeQuery().use { rs ->
+                while (rs.next()) {
+                    result.add(ObjectInfo(name = rs.getString(1), object_type = rs.getString(2), schema = schema))
+                }
+            }
+        }
+        return result
+    }
+
+    override fun getObjectSource(schema: String, name: String, objectType: String): ObjectSource {
+        val conn = requireConnection()
+        val effectiveSchema = resolveSchema(schema)
+        val sql = when (objectType.uppercase()) {
+            "VIEW" -> "SELECT VIEW_DEFINITION FROM INFORMATION_SCHEMA.VIEWS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?"
+            "FUNCTION", "PROCEDURE" -> "SELECT ROUTINE_DEFINITION FROM INFORMATION_SCHEMA.ROUTINES WHERE ROUTINE_SCHEMA = ? AND ROUTINE_NAME = ?"
+            else -> throw IllegalArgumentException("Unsupported object type: $objectType")
+        }
+        val source = conn.prepareStatement(sql).use { stmt ->
+            stmt.setString(1, effectiveSchema)
+            stmt.setString(2, name)
+            stmt.executeQuery().use { rs ->
+                if (rs.next()) rs.getString(1) ?: "" else ""
+            }
+        }
+        return ObjectSource(name = name, object_type = objectType, schema = schema, source = source)
+    }
+
     override fun getColumns(schema: String, table: String): List<ColumnInfo> {
         val conn = requireConnection()
         val effectiveSchema = resolveSchema(schema)

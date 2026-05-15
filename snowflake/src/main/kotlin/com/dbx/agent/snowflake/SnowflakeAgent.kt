@@ -76,6 +76,34 @@ class SnowflakeAgent : DatabaseAgent {
         }
     }
 
+    override fun listObjects(schema: String): List<ObjectInfo> {
+        val result = listTables(schema).map { ObjectInfo(name = it.name, object_type = it.table_type, schema = schema, comment = it.comment) }.toMutableList()
+        val conn = requireConnection()
+        conn.prepareStatement(
+            "SELECT PROCEDURE_NAME, 'PROCEDURE' FROM INFORMATION_SCHEMA.PROCEDURES WHERE PROCEDURE_SCHEMA = ? ORDER BY PROCEDURE_NAME"
+        ).use { stmt ->
+            stmt.setString(1, schema)
+            stmt.executeQuery().use { rs ->
+                while (rs.next()) {
+                    result.add(ObjectInfo(name = rs.getString(1), object_type = rs.getString(2), schema = schema))
+                }
+            }
+        }
+        return result
+    }
+
+    override fun getObjectSource(schema: String, name: String, objectType: String): ObjectSource {
+        val conn = requireConnection()
+        val ddlType = objectType.uppercase()
+        val sql = "SELECT GET_DDL('$ddlType', '\"$schema\".\"$name\"')"
+        val source = conn.createStatement().use { stmt ->
+            stmt.executeQuery(sql).use { rs ->
+                if (rs.next()) rs.getString(1) ?: "" else ""
+            }
+        }
+        return ObjectSource(name = name, object_type = objectType, schema = schema, source = source)
+    }
+
     override fun getColumns(schema: String, table: String): List<ColumnInfo> {
         val conn = requireConnection()
 

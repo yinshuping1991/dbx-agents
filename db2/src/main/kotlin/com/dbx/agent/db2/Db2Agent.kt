@@ -77,6 +77,35 @@ class Db2Agent : DatabaseAgent {
         }
     }
 
+    override fun listObjects(schema: String): List<ObjectInfo> {
+        val result = listTables(schema).map { ObjectInfo(name = it.name, object_type = it.table_type, schema = schema, comment = it.comment) }.toMutableList()
+        val conn = requireConnection()
+        conn.prepareStatement(
+            "SELECT PROCNAME, 'PROCEDURE' FROM SYSCAT.PROCEDURES WHERE PROCSCHEMA = ? ORDER BY PROCNAME"
+        ).use { stmt ->
+            stmt.setString(1, schema)
+            stmt.executeQuery().use { rs ->
+                while (rs.next()) {
+                    result.add(ObjectInfo(name = rs.getString(1).trim(), object_type = rs.getString(2), schema = schema))
+                }
+            }
+        }
+        return result
+    }
+
+    override fun getObjectSource(schema: String, name: String, objectType: String): ObjectSource {
+        val conn = requireConnection()
+        val sql = "SELECT TEXT FROM SYSCAT.ROUTINES WHERE ROUTINESCHEMA = ? AND ROUTINENAME = ?"
+        val source = conn.prepareStatement(sql).use { stmt ->
+            stmt.setString(1, schema)
+            stmt.setString(2, name)
+            stmt.executeQuery().use { rs ->
+                if (rs.next()) rs.getString(1) ?: "" else ""
+            }
+        }
+        return ObjectSource(name = name, object_type = objectType, schema = schema, source = source)
+    }
+
     override fun getColumns(schema: String, table: String): List<ColumnInfo> {
         val conn = requireConnection()
 

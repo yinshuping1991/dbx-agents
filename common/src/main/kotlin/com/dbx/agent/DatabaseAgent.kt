@@ -8,7 +8,13 @@ interface DatabaseAgent {
     fun listDatabases(): List<DatabaseInfo>
     fun listSchemas(): List<String>
     fun listTables(schema: String): List<TableInfo>
+    fun listObjects(schema: String): List<ObjectInfo> {
+        return listTables(schema).map { ObjectInfo(name = it.name, object_type = it.table_type, schema = schema, comment = it.comment) }
+    }
     fun getColumns(schema: String, table: String): List<ColumnInfo>
+    fun getObjectSource(schema: String, name: String, objectType: String): ObjectSource {
+        throw UnsupportedOperationException("Object source is not supported")
+    }
     fun listIndexes(schema: String, table: String): List<IndexInfo>
     fun listForeignKeys(schema: String, table: String): List<ForeignKeyInfo>
     fun listTriggers(schema: String, table: String): List<TriggerInfo>

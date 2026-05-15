@@ -53,6 +53,20 @@ data class QueryResult(
     val truncated: Boolean = false
 )
 
+data class ObjectInfo(
+    val name: String,
+    val object_type: String,
+    val schema: String? = null,
+    val comment: String? = null
+)
+
+data class ObjectSource(
+    val name: String,
+    val object_type: String,
+    val schema: String? = null,
+    val source: String
+)
+
 data class ConnectParams(
     val host: String = "",
     val port: Int = 0,

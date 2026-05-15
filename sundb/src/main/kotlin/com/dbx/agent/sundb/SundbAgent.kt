@@ -62,6 +62,41 @@ class SundbAgent : DatabaseAgent {
         return result
     }
 
+    override fun listObjects(schema: String): List<ObjectInfo> {
+        val result = listTables(schema).map { ObjectInfo(name = it.name, object_type = it.table_type, schema = schema, comment = it.comment) }.toMutableList()
+        val conn = connection ?: throw IllegalStateException("Not connected")
+        conn.prepareStatement(
+            "SELECT ROUTINE_NAME, ROUTINE_TYPE FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = ? ORDER BY ROUTINE_NAME"
+        ).use { stmt ->
+            stmt.setString(1, schema)
+            stmt.executeQuery().use { rs ->
+                while (rs.next()) {
+                    result.add(ObjectInfo(name = rs.getString(1), object_type = rs.getString(2), schema = schema))
+                }
+            }
+        }
+        return result
+    }
+
+    override fun getObjectSource(schema: String, name: String, objectType: String): ObjectSource {
+        val conn = connection ?: throw IllegalStateException("Not connected")
+        val sql = when (objectType.uppercase()) {
+            "VIEW" -> "SHOW CREATE VIEW `${name.replace("`", "``")}`"
+            "PROCEDURE" -> "SHOW CREATE PROCEDURE `${name.replace("`", "``")}`"
+            "FUNCTION" -> "SHOW CREATE FUNCTION `${name.replace("`", "``")}`"
+            else -> throw IllegalArgumentException("Unsupported object type: $objectType")
+        }
+        val source = conn.createStatement().use { stmt ->
+            stmt.executeQuery(sql).use { rs ->
+                if (rs.next()) {
+                    val index = if (objectType.uppercase() == "VIEW") 1 else 2
+                    rs.getString(index + 1) ?: ""
+                } else ""
+            }
+        }
+        return ObjectSource(name = name, object_type = objectType, schema = schema, source = source)
+    }
+
     override fun getColumns(schema: String, table: String): List<ColumnInfo> {
         val conn = connection ?: throw IllegalStateException("Not connected")
 

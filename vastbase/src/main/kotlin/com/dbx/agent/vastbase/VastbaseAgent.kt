@@ -71,6 +71,58 @@ class VastbaseAgent : DatabaseAgent {
         return result
     }
 
+    override fun listObjects(schema: String): List<ObjectInfo> {
+        val result = listTables(schema).map { ObjectInfo(name = it.name, object_type = it.table_type, schema = schema, comment = it.comment) }.toMutableList()
+        val conn = connection ?: throw IllegalStateException("Not connected")
+        conn.prepareStatement(
+            "SELECT routine_name, routine_type FROM information_schema.routines WHERE routine_schema = ? ORDER BY routine_name"
+        ).use { stmt ->
+            stmt.setString(1, schema)
+            stmt.executeQuery().use { rs ->
+                while (rs.next()) {
+                    result.add(ObjectInfo(name = rs.getString(1), object_type = rs.getString(2), schema = schema))
+                }
+            }
+        }
+        return result
+    }
+
+    override fun getObjectSource(schema: String, name: String, objectType: String): ObjectSource {
+        val conn = connection ?: throw IllegalStateException("Not connected")
+        val sql = when (objectType.uppercase()) {
+            "VIEW" -> "SELECT pg_get_viewdef('\"$schema\".\"$name\"'::regclass, true)"
+            "FUNCTION" -> """
+                SELECT pg_get_functiondef(p.oid)
+                FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                WHERE n.nspname = ? AND p.proname = ? AND p.prokind = 'f'
+                ORDER BY p.oid LIMIT 1
+            """.trimIndent()
+            "PROCEDURE" -> """
+                SELECT pg_get_functiondef(p.oid)
+                FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                WHERE n.nspname = ? AND p.proname = ? AND p.prokind = 'p'
+                ORDER BY p.oid LIMIT 1
+            """.trimIndent()
+            else -> throw IllegalArgumentException("Unsupported object type: $objectType")
+        }
+        val source = if (objectType.uppercase() == "VIEW") {
+            conn.createStatement().use { stmt ->
+                stmt.executeQuery(sql).use { rs ->
+                    if (rs.next()) rs.getString(1) ?: "" else ""
+                }
+            }
+        } else {
+            conn.prepareStatement(sql).use { stmt ->
+                stmt.setString(1, schema)
+                stmt.setString(2, name)
+                stmt.executeQuery().use { rs ->
+                    if (rs.next()) rs.getString(1) ?: "" else ""
+                }
+            }
+        }
+        return ObjectSource(name = name, object_type = objectType, schema = schema, source = source)
+    }
+
     override fun getColumns(schema: String, table: String): List<ColumnInfo> {
         val conn = connection ?: throw IllegalStateException("Not connected")
 

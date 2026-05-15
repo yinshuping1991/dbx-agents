@@ -136,6 +136,46 @@ class InformixAgent : DatabaseAgent {
         }
     }
 
+    override fun listObjects(schema: String): List<ObjectInfo> {
+        val result = listTables(schema).map { ObjectInfo(name = it.name, object_type = it.table_type, schema = schema, comment = it.comment) }.toMutableList()
+        val conn = requireConnection()
+        conn.createStatement().use { stmt ->
+            stmt.executeQuery("SELECT procname FROM sysprocedures WHERE owner != 'informix' AND isproc = 'f' ORDER BY procname").use { rs ->
+                while (rs.next()) {
+                    result.add(ObjectInfo(name = rs.getString(1).trim(), object_type = "FUNCTION", schema = schema))
+                }
+            }
+        }
+        conn.createStatement().use { stmt ->
+            stmt.executeQuery("SELECT procname FROM sysprocedures WHERE owner != 'informix' AND isproc = 't' ORDER BY procname").use { rs ->
+                while (rs.next()) {
+                    result.add(ObjectInfo(name = rs.getString(1).trim(), object_type = "PROCEDURE", schema = schema))
+                }
+            }
+        }
+        return result
+    }
+
+    override fun getObjectSource(schema: String, name: String, objectType: String): ObjectSource {
+        val conn = requireConnection()
+        val sql = """
+            SELECT b.data FROM sysprocbody b
+            JOIN sysprocedures p ON b.procid = p.procid
+            WHERE p.procname = ? AND b.datakey = 'T'
+            ORDER BY b.seqno
+        """.trimIndent()
+        val sb = StringBuilder()
+        conn.prepareStatement(sql).use { stmt ->
+            stmt.setString(1, name)
+            stmt.executeQuery().use { rs ->
+                while (rs.next()) {
+                    sb.append(rs.getString(1) ?: "")
+                }
+            }
+        }
+        return ObjectSource(name = name, object_type = objectType, schema = schema, source = sb.toString())
+    }
+
     override fun getColumns(schema: String, table: String): List<ColumnInfo> {
         val conn = requireConnection()
         val primaryKeyColumns = getPrimaryKeyColumnNumbers(conn, table)
