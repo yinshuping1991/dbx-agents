@@ -27,7 +27,7 @@ Each agent must implement these capabilities:
 - `listIndexes(schema, table)`: return one `IndexInfo` per index, preserving column order.
 - `listForeignKeys(schema, table)`: return outbound foreign keys when available.
 - `listTriggers(schema, table)`: return triggers when available; return an empty list if the database has no trigger metadata.
-- `executeQuery(sql, schema)`: execute arbitrary user SQL through `JdbcExecutor`.
+- `executeQuery(sql, schema, options)`: execute arbitrary user SQL through `JdbcExecutor`.
 - `disconnect()`: close the connection and clear the stored reference.
 - `getConnection()`: return the stored `Connection?`.
 
@@ -40,20 +40,29 @@ Do not classify statements by SQL prefix inside individual agents.
 Use:
 
 ```kotlin
-override fun executeQuery(sql: String, schema: String?): QueryResult {
-    return JdbcExecutor.execute(requireConnection(), sql, schema, ::setSchemaSQL)
+override fun executeQuery(sql: String, schema: String?, options: ExecuteQueryOptions): QueryResult {
+    return JdbcExecutor.execute(
+        requireConnection(),
+        sql,
+        schema,
+        ::setSchemaSQL,
+        maxRows = options.maxRows,
+        fetchSize = options.fetchSize,
+    )
 }
 ```
 
 Some drivers return non-standard Java types from `ResultSet.getObject`. If a driver is safer when values are stringified, pass a value reader:
 
 ```kotlin
-override fun executeQuery(sql: String, schema: String?): QueryResult {
+override fun executeQuery(sql: String, schema: String?, options: ExecuteQueryOptions): QueryResult {
     return JdbcExecutor.execute(
         requireConnection(),
         sql,
         schema,
         ::setSchemaSQL,
+        maxRows = options.maxRows,
+        fetchSize = options.fetchSize,
         valueReader = ::stringResultValue,
     )
 }
@@ -71,7 +80,8 @@ private fun stringResultValue(rs: ResultSet, index: Int, sqlType: Int): Any? {
 - Executes statements with `Statement.execute(...)`.
 - Reads `ResultSet` output for any statement type, not only `SELECT`.
 - Returns update counts for update statements.
-- Caps result rows at `JdbcExecutor.DEFAULT_MAX_ROWS`.
+- Caps result rows at `options.maxRows`, defaulting to `JdbcExecutor.DEFAULT_MAX_ROWS`.
+- Applies `options.fetchSize` to the JDBC statement when provided.
 - Marks `truncated = true` only when more rows exist beyond the cap.
 
 An agent must not reintroduce local copies of:

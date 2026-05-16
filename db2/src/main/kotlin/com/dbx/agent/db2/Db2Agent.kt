@@ -240,8 +240,8 @@ class Db2Agent : DatabaseAgent {
         }
     }
 
-    override fun executeQuery(sql: String, schema: String?): QueryResult {
-        return JdbcExecutor.execute(requireConnection(), sql, schema, ::setSchemaSQL, valueReader = ::stringResultValue)
+    override fun executeQuery(sql: String, schema: String?, options: ExecuteQueryOptions): QueryResult {
+        return JdbcExecutor.execute(requireConnection(), sql, schema, ::setSchemaSQL, maxRows = options.maxRows, fetchSize = options.fetchSize, valueReader = ::stringResultValue)
     }
 
     override fun disconnect() {

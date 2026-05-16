@@ -75,7 +75,7 @@ class TDengineAgentMetadataTest {
 
         agent.executeQuery("SELECT 1", "power")
 
-        assertEquals(listOf("execute", "execute"), JdbcAgentFake.calls)
+        assertEquals(listOf("execute", "setMaxRows:10001", "execute"), JdbcAgentFake.calls)
     }
 
     @Test

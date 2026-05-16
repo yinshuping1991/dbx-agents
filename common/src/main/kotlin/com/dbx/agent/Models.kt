@@ -53,6 +53,27 @@ data class QueryResult(
     val truncated: Boolean = false
 )
 
+data class ExecuteQueryOptions(
+    val maxRows: Int = JdbcExecutor.DEFAULT_MAX_ROWS,
+    val fetchSize: Int? = null
+)
+
+data class QueryPageOptions(
+    val pageSize: Int = 100,
+    val fetchSize: Int? = null,
+    val maxRows: Int = JdbcExecutor.DEFAULT_MAX_ROWS
+)
+
+data class QueryPageResult(
+    val columns: List<String>,
+    val rows: List<List<Any?>>,
+    val affected_rows: Long,
+    val execution_time_ms: Long,
+    val truncated: Boolean = false,
+    val session_id: String? = null,
+    val has_more: Boolean = false
+)
+
 data class ObjectInfo(
     val name: String,
     val object_type: String,
@@ -83,5 +104,15 @@ data class SchemaTableParams(
 
 data class ExecuteQueryParams(
     val sql: String,
-    val schema: String? = null
+    val schema: String? = null,
+    val maxRows: Int? = null,
+    val fetchSize: Int? = null
+)
+
+data class QueryPageParams(
+    val sql: String,
+    val schema: String? = null,
+    val pageSize: Int? = null,
+    val fetchSize: Int? = null,
+    val maxRows: Int? = null
 )

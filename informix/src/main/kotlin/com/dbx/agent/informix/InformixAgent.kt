@@ -266,14 +266,14 @@ class InformixAgent : DatabaseAgent {
         }
     }
 
-    override fun executeQuery(sql: String, schema: String?): QueryResult {
+    override fun executeQuery(sql: String, schema: String?, options: ExecuteQueryOptions): QueryResult {
         val normalizedSql = when (sql.trim().trimEnd(';').uppercase()) {
             "BEGIN WORK" -> "BEGIN"
             "COMMIT WORK" -> "COMMIT"
             "ROLLBACK WORK" -> "ROLLBACK"
             else -> sql
         }
-        return JdbcExecutor.execute(requireConnection(), normalizedSql, schema, ::setSchemaSQL, valueReader = ::stringResultValue)
+        return JdbcExecutor.execute(requireConnection(), normalizedSql, schema, ::setSchemaSQL, maxRows = options.maxRows, fetchSize = options.fetchSize, valueReader = ::stringResultValue)
     }
 
     override fun setSchemaSQL(schema: String): String = ""

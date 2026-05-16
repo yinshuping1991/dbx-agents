@@ -363,12 +363,14 @@ class OracleAgent : DatabaseAgent {
         }
     }
 
-    override fun executeQuery(sql: String, schema: String?): QueryResult {
+    override fun executeQuery(sql: String, schema: String?, options: ExecuteQueryOptions): QueryResult {
         return JdbcExecutor.execute(
             conn = requireConnection(),
             sql = rewriteFetchFirst(sql.trim().trimEnd(';')),
             schema = schema,
             setSchemaSql = ::setSchemaSQL,
+            maxRows = options.maxRows,
+            fetchSize = options.fetchSize,
             valueReader = ::stringResultValue,
         )
     }

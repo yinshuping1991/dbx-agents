@@ -124,8 +124,8 @@ class CassandraAgent : DatabaseAgent {
         return emptyList()
     }
 
-    override fun executeQuery(sql: String, schema: String?): QueryResult {
-        return JdbcExecutor.execute(requireConnection(), sql, schema, ::setSchemaSQL, valueReader = ::stringResultValue)
+    override fun executeQuery(sql: String, schema: String?, options: ExecuteQueryOptions): QueryResult {
+        return JdbcExecutor.execute(requireConnection(), sql, schema, ::setSchemaSQL, maxRows = options.maxRows, fetchSize = options.fetchSize, valueReader = ::stringResultValue)
     }
 
     private fun stringResultValue(rs: java.sql.ResultSet, index: Int, sqlType: Int): Any? {

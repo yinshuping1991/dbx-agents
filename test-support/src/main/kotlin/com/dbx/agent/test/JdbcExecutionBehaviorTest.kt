@@ -1,11 +1,13 @@
 package com.dbx.agent.test
 
 import com.dbx.agent.JdbcExecutor
+import com.dbx.agent.QueryPageOptions
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
 
 abstract class JdbcExecutionBehaviorTest : JdbcConnectedAgentTest() {
     protected abstract fun resultSetSql(): String
@@ -45,6 +47,57 @@ abstract class JdbcExecutionBehaviorTest : JdbcConnectedAgentTest() {
 
             assertEquals(JdbcExecutor.DEFAULT_MAX_ROWS, result.rows.size)
             assertTrue(result.truncated)
+        }
+    }
+
+    @Test
+    fun `fetches subsequent result pages from the same jdbc session`() {
+        withAgent("dbx-agent-session-pages") { agent ->
+            val first = agent.executeQueryPage(rowsSql(5), null, QueryPageOptions(pageSize = 2, fetchSize = 2, maxRows = 10))
+
+            assertEquals(listOf(listOf(1L), listOf(2L)), first.rows)
+            assertTrue(first.has_more)
+            assertFalse(first.truncated)
+            val sessionId = assertNotNull(first.session_id)
+
+            val second = agent.fetchQueryPage(sessionId, 2)
+
+            assertEquals(listOf(listOf(3L), listOf(4L)), second.rows)
+            assertTrue(second.has_more)
+            assertFalse(second.truncated)
+
+            val third = agent.fetchQueryPage(sessionId, 2)
+
+            assertEquals(listOf(listOf(5L)), third.rows)
+            assertFalse(third.has_more)
+            assertFalse(third.truncated)
+        }
+    }
+
+    @Test
+    fun `closes jdbc result sessions explicitly`() {
+        withAgent("dbx-agent-session-close") { agent ->
+            val first = agent.executeQueryPage(rowsSql(5), null, QueryPageOptions(pageSize = 2, fetchSize = 2, maxRows = 10))
+            val sessionId = assertNotNull(first.session_id)
+
+            assertTrue(agent.closeQuerySession(sessionId))
+            assertFalse(agent.closeQuerySession(sessionId))
+            assertFailsWith<IllegalArgumentException> {
+                agent.fetchQueryPage(sessionId, 2)
+            }
+        }
+    }
+
+    @Test
+    fun `expires idle jdbc result sessions`() {
+        withAgent("dbx-agent-session-expiry") { agent ->
+            val first = agent.executeQueryPage(rowsSql(5), null, QueryPageOptions(pageSize = 2, fetchSize = 2, maxRows = 10))
+            val sessionId = assertNotNull(first.session_id)
+
+            assertEquals(1, JdbcExecutor.expireIdleQuerySessions(idleTimeoutMillis = 0))
+            assertFailsWith<IllegalArgumentException> {
+                agent.fetchQueryPage(sessionId, 2)
+            }
         }
     }
 

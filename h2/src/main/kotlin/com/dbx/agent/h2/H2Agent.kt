@@ -273,8 +273,8 @@ class H2Agent : DatabaseAgent {
         }
     }
 
-    override fun executeQuery(sql: String, schema: String?): QueryResult {
-        return JdbcExecutor.execute(requireConnection(), sql, schema, ::setSchemaSQL)
+    override fun executeQuery(sql: String, schema: String?, options: ExecuteQueryOptions): QueryResult {
+        return JdbcExecutor.execute(requireConnection(), sql, schema, ::setSchemaSQL, maxRows = options.maxRows, fetchSize = options.fetchSize)
     }
 
     override fun setSchemaSQL(schema: String): String = "SET SCHEMA ${JdbcIdentifiers.doubleQuote(schema)}"

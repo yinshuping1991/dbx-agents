@@ -27,7 +27,17 @@ interface DatabaseAgent {
     fun listIndexes(schema: String, table: String): List<IndexInfo>
     fun listForeignKeys(schema: String, table: String): List<ForeignKeyInfo>
     fun listTriggers(schema: String, table: String): List<TriggerInfo>
-    fun executeQuery(sql: String, schema: String?): QueryResult
+    fun executeQuery(sql: String, schema: String?, options: ExecuteQueryOptions = ExecuteQueryOptions()): QueryResult
+    fun executeQueryPage(sql: String, schema: String?, options: QueryPageOptions = QueryPageOptions()): QueryPageResult {
+        val conn = getConnection() ?: throw IllegalStateException("Not connected")
+        return JdbcExecutor.executePage(conn, sql, schema, ::setSchemaSQL, options)
+    }
+    fun fetchQueryPage(sessionId: String, pageSize: Int): QueryPageResult {
+        return JdbcExecutor.fetchPage(sessionId, pageSize)
+    }
+    fun closeQuerySession(sessionId: String): Boolean {
+        return JdbcExecutor.closeQuerySession(sessionId)
+    }
     fun disconnect()
     fun getConnection(): Connection?
     fun executeTransaction(statements: List<String>, schema: String?): QueryResult {

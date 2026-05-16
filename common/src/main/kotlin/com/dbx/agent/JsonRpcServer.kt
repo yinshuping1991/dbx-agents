@@ -12,6 +12,11 @@ private fun JsonObject.stringOrNull(key: String): String? {
     return if (el is JsonNull) null else el.asString
 }
 
+private fun JsonObject.intOrNull(key: String): Int? {
+    val el = get(key) ?: return null
+    return if (el is JsonNull) null else el.asInt
+}
+
 class JsonRpcServer(private val agent: DatabaseAgent) {
     private val gson = Gson()
 
@@ -100,7 +105,27 @@ class JsonRpcServer(private val agent: DatabaseAgent) {
             )
             "execute_query" -> agent.executeQuery(
                 params.get("sql").asString,
-                params.stringOrNull("schema")
+                params.stringOrNull("schema"),
+                ExecuteQueryOptions(
+                    maxRows = params.intOrNull("maxRows") ?: JdbcExecutor.DEFAULT_MAX_ROWS,
+                    fetchSize = params.intOrNull("fetchSize")
+                )
+            )
+            "execute_query_page" -> agent.executeQueryPage(
+                params.get("sql").asString,
+                params.stringOrNull("schema"),
+                QueryPageOptions(
+                    pageSize = params.intOrNull("pageSize") ?: 100,
+                    fetchSize = params.intOrNull("fetchSize"),
+                    maxRows = params.intOrNull("maxRows") ?: JdbcExecutor.DEFAULT_MAX_ROWS
+                )
+            )
+            "fetch_query_page" -> agent.fetchQueryPage(
+                params.get("sessionId").asString,
+                params.intOrNull("pageSize") ?: 100
+            )
+            "close_query_session" -> agent.closeQuerySession(
+                params.get("sessionId").asString
             )
             "execute_transaction" -> {
                 val statements = gson.fromJson<List<String>>(
@@ -111,10 +136,12 @@ class JsonRpcServer(private val agent: DatabaseAgent) {
                 agent.executeTransaction(statements, schema)
             }
             "disconnect" -> {
+                JdbcExecutor.closeAllQuerySessions()
                 agent.disconnect()
                 mapOf("ok" to true)
             }
             "shutdown" -> {
+                JdbcExecutor.closeAllQuerySessions()
                 agent.disconnect()
                 System.exit(0)
                 mapOf("ok" to true)

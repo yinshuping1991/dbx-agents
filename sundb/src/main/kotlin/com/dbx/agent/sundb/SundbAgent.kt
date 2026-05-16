@@ -252,12 +252,14 @@ class SundbAgent : DatabaseAgent {
         return result
     }
 
-    override fun executeQuery(sql: String, schema: String?): QueryResult {
+    override fun executeQuery(sql: String, schema: String?, options: ExecuteQueryOptions): QueryResult {
         return JdbcExecutor.execute(
             conn = connection ?: throw IllegalStateException("Not connected"),
             sql = sql,
             schema = schema,
             setSchemaSql = ::setSchemaSQL,
+            maxRows = options.maxRows,
+            fetchSize = options.fetchSize,
             valueReader = ::getResultValue,
         )
     }

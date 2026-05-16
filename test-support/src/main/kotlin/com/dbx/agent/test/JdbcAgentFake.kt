@@ -25,7 +25,7 @@ object JdbcAgentFake {
 
     private fun statement(): Statement {
         val resultSet = resultSet()
-        return proxy(Statement::class.java) { method, _ ->
+        return proxy(Statement::class.java) { method, args ->
             when (method.name) {
                 "execute" -> {
                     calls.add("execute")
@@ -41,7 +41,15 @@ object JdbcAgentFake {
                 }
                 "getResultSet" -> resultSet
                 "getUpdateCount" -> 0
-                "setMaxRows", "close" -> null
+                "setMaxRows" -> {
+                    calls.add("setMaxRows:${args?.get(0)}")
+                    null
+                }
+                "setFetchSize" -> {
+                    calls.add("setFetchSize:${args?.get(0)}")
+                    null
+                }
+                "close" -> null
                 else -> defaultValue(method.returnType)
             }
         }
