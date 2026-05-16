@@ -26,6 +26,7 @@ Each agent runs as a standalone JVM process and communicates with DBX via stdin/
 | kylin | Apache Kylin | Kylin JDBC |
 | sundb | SunDB | SunDB JDBC |
 | gaussdb | GaussDB | GaussDB JDBC |
+| tdengine | TDengine | taos-jdbcdriver (WebSocket) |
 
 ## Multi-JRE Support
 
