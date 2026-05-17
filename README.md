@@ -8,6 +8,7 @@ Each agent runs as a standalone JVM process and communicates with DBX via stdin/
 
 | Agent | Database | JDBC Driver |
 |-------|----------|-------------|
+| access | Microsoft Access | UCanAccess |
 | dameng | 达梦 DM8 | DM JDBC |
 | kingbase | 人大金仓 KingbaseES | KingbaseES JDBC |
 | vastbase | Vastbase | Vastbase JDBC |

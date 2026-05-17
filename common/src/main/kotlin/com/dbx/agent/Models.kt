@@ -94,7 +94,8 @@ data class ConnectParams(
     val database: String = "",
     val username: String = "",
     val password: String = "",
-    val url_params: String = ""
+    val url_params: String = "",
+    val connection_string: String = ""
 )
 
 data class SchemaTableParams(

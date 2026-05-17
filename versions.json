@@ -1,4 +1,5 @@
 {
+  "access": "0.1.0",
   "bigquery": "0.1.3",
   "cassandra": "0.1.3",
   "dameng": "0.1.4",
