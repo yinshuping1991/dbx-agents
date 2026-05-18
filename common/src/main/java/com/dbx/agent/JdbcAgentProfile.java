@@ -5,7 +5,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 
-public final class JdbcAgentProfile {
+public class JdbcAgentProfile {
     private final String driverClass;
     private final String urlTemplate;
     private final int defaultPort;

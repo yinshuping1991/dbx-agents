@@ -13,6 +13,15 @@ Each agent runs as a standalone JVM process and communicates with DBX via stdin/
 | kingbase | 人大金仓 KingbaseES | KingbaseES JDBC |
 | vastbase | Vastbase | Vastbase JDBC |
 | goldendb | GoldenDB | MySQL Connector/J |
+| databricks | Databricks SQL | Databricks JDBC |
+| saphana | SAP HANA | SAP HANA JDBC |
+| teradata | Teradata | Teradata JDBC |
+| vertica | Vertica | Vertica JDBC |
+| firebird | Firebird | Jaybird JDBC |
+| exasol | Exasol | Exasol JDBC |
+| opengauss | openGauss | openGauss JDBC |
+| oceanbase-oracle | OceanBase Oracle Mode | OceanBase JDBC |
+| gbase | GBase | External GBase JDBC |
 | oracle | Oracle (11g+) | ojdbc11 |
 | oracle-10g | Oracle 10g | ojdbc8 (JRE 8) |
 | h2 | H2 | H2 JDBC |
