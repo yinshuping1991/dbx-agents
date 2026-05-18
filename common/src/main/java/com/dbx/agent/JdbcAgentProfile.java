@@ -1,0 +1,103 @@
+package com.dbx.agent;
+
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.Set;
+
+public final class JdbcAgentProfile {
+    private final String driverClass;
+    private final String urlTemplate;
+    private final int defaultPort;
+    private final boolean skipExecutionContext;
+    private final Set<String> excludedSchemas;
+    private final List<String> tableTypes;
+
+    public JdbcAgentProfile(String driverClass, String urlTemplate) {
+        this(driverClass, urlTemplate, 0);
+    }
+
+    public JdbcAgentProfile(String driverClass, String urlTemplate, int defaultPort) {
+        this(driverClass, urlTemplate, defaultPort, false);
+    }
+
+    public JdbcAgentProfile(String driverClass, String urlTemplate, int defaultPort, boolean skipExecutionContext) {
+        this(
+            driverClass,
+            urlTemplate,
+            defaultPort,
+            skipExecutionContext,
+            Collections.emptySet(),
+            Arrays.asList("TABLE", "VIEW", "MATERIALIZED VIEW", "SYSTEM TABLE", "SYSTEM VIEW")
+        );
+    }
+
+    public JdbcAgentProfile(
+        String driverClass,
+        String urlTemplate,
+        int defaultPort,
+        boolean skipExecutionContext,
+        Set<String> excludedSchemas,
+        List<String> tableTypes
+    ) {
+        this.driverClass = driverClass;
+        this.urlTemplate = urlTemplate;
+        this.defaultPort = defaultPort;
+        this.skipExecutionContext = skipExecutionContext;
+        this.excludedSchemas = excludedSchemas;
+        this.tableTypes = tableTypes;
+    }
+
+    public String getDriverClass() {
+        return driverClass;
+    }
+
+    public String getUrlTemplate() {
+        return urlTemplate;
+    }
+
+    public int getDefaultPort() {
+        return defaultPort;
+    }
+
+    public boolean getSkipExecutionContext() {
+        return skipExecutionContext;
+    }
+
+    public Set<String> getExcludedSchemas() {
+        return excludedSchemas;
+    }
+
+    public List<String> getTableTypes() {
+        return tableTypes;
+    }
+
+    public String buildUrl(ConnectParams params) {
+        if (!params.getConnection_string().trim().isEmpty()) {
+            return params.getConnection_string();
+        }
+        int port = params.getPort() > 0 ? params.getPort() : defaultPort;
+        String base = urlTemplate
+            .replace("{host}", params.getHost())
+            .replace("{port}", Integer.toString(port))
+            .replace("{database}", params.getDatabase());
+        return appendUrlParams(base, params.getUrl_params());
+    }
+
+    private static String appendUrlParams(String url, String urlParams) {
+        String params = trimUrlParams(urlParams);
+        if (params.isEmpty()) {
+            return url;
+        }
+        String separator = url.contains("?") ? "&" : "?";
+        return url + separator + params;
+    }
+
+    private static String trimUrlParams(String urlParams) {
+        String value = urlParams == null ? "" : urlParams.trim();
+        while (value.startsWith("?") || value.startsWith("&")) {
+            value = value.substring(1);
+        }
+        return value;
+    }
+}

@@ -7,8 +7,8 @@ class ConfiguredJdbcAgentTest {
     @Test
     fun `builds jdbc url from profile template and url params`() {
         val profile = JdbcAgentProfile(
-            driverClass = "com.example.Driver",
-            urlTemplate = "jdbc:example://{host}:{port}/{database}",
+            "com.example.Driver",
+            "jdbc:example://{host}:{port}/{database}",
         )
 
         val url = profile.buildUrl(
@@ -26,8 +26,8 @@ class ConfiguredJdbcAgentTest {
     @Test
     fun `uses explicit connection string before template`() {
         val profile = JdbcAgentProfile(
-            driverClass = "com.example.Driver",
-            urlTemplate = "jdbc:example://{host}:{port}/{database}",
+            "com.example.Driver",
+            "jdbc:example://{host}:{port}/{database}",
         )
 
         val url = profile.buildUrl(
@@ -43,12 +43,31 @@ class ConfiguredJdbcAgentTest {
     }
 
     @Test
+    fun `uses default port when params omit port`() {
+        val profile = JdbcAgentProfile(
+            "com.example.Driver",
+            "jdbc:example://{host}:{port}/{database}",
+            9999,
+        )
+
+        val url = profile.buildUrl(
+            ConnectParams(
+                host = "127.0.0.1",
+                database = "demo",
+            )
+        )
+
+        assertEquals("jdbc:example://127.0.0.1:9999/demo", url)
+    }
+
+    @Test
     fun `can disable schema switching for drivers that do not support context changes`() {
         val agent = object : ConfiguredJdbcAgent(
             JdbcAgentProfile(
-                driverClass = "com.example.Driver",
-                urlTemplate = "jdbc:example://{host}:{port}/{database}",
-                skipExecutionContext = true,
+                "com.example.Driver",
+                "jdbc:example://{host}:{port}/{database}",
+                0,
+                true,
             )
         ) {}
 

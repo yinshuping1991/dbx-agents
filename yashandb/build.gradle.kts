@@ -19,7 +19,7 @@ tasks.shadowJar {
     archiveBaseName.set("dbx-agent-yashandb")
     archiveClassifier.set("")
     manifest {
-        attributes("Agent-Label" to "崖山 YashanDB", "Main-Class" to "com.dbx.agent.yashandb.YashandbAgentKt")
+        attributes("Agent-Label" to "崖山 YashanDB", "Main-Class" to "com.dbx.agent.yashandb.YashandbAgent")
     }
 }
 
