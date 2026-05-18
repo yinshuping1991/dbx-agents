@@ -20,7 +20,7 @@ tasks.shadowJar {
     archiveBaseName.set("dbx-agent-tdengine")
     archiveClassifier.set("")
     manifest {
-        attributes("Agent-Label" to "TDengine", "Main-Class" to "com.dbx.agent.tdengine.TDengineAgentKt")
+        attributes("Agent-Label" to "TDengine", "Main-Class" to "com.dbx.agent.tdengine.TDengineAgent")
     }
 }
 

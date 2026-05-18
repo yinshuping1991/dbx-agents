@@ -80,11 +80,11 @@ class TDengineAgentMetadataTest {
 
     @Test
     fun `decodes tdengine byte array text values`() {
-        assertEquals("d1001", decodeTdengineValue("d1001".toByteArray()))
+        assertEquals("d1001", TDengineAgent.decodeTdengineValue("d1001".toByteArray()))
     }
 
     @Test
     fun `formats tdengine timestamps as sql literals`() {
-        assertEquals("2026-05-16 09:35:58.123", decodeTdengineValue(Timestamp.valueOf("2026-05-16 09:35:58.123")))
+        assertEquals("2026-05-16 09:35:58.123", TDengineAgent.decodeTdengineValue(Timestamp.valueOf("2026-05-16 09:35:58.123")))
     }
 }

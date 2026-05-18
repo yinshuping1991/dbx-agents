@@ -19,7 +19,7 @@ tasks.shadowJar {
     archiveBaseName.set("dbx-agent-access")
     archiveClassifier.set("")
     manifest {
-        attributes("Agent-Label" to "Microsoft Access", "Main-Class" to "com.dbx.agent.access.AccessAgentKt")
+        attributes("Agent-Label" to "Microsoft Access", "Main-Class" to "com.dbx.agent.access.AccessAgent")
     }
 }
 
