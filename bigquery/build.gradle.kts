@@ -22,7 +22,7 @@ tasks.shadowJar {
         attributes(
             "Agent-Label" to "Google BigQuery",
             "Agent-External-Driver" to "true",
-            "Main-Class" to "com.dbx.agent.bigquery.BigQueryAgentKt"
+            "Main-Class" to "com.dbx.agent.bigquery.BigQueryAgent"
         )
     }
 }

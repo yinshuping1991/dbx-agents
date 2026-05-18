@@ -1,9 +1,19 @@
 package com.dbx.agent.h2
 
+import com.dbx.agent.BaseDatabaseAgent
 import com.dbx.agent.ConnectParams
 import com.dbx.agent.DatabaseAgent
 import com.dbx.agent.test.JdbcExecutionBehaviorTest
 import com.dbx.agent.test.JdbcMetadataBehaviorTest
+import kotlin.test.Test
+import kotlin.test.assertTrue
+
+class H2AgentMigrationTest {
+    @Test
+    fun `agent extends base database agent`() {
+        assertTrue(BaseDatabaseAgent::class.java.isAssignableFrom(H2Agent::class.java))
+    }
+}
 
 class H2ExecutionBehaviorTest : JdbcExecutionBehaviorTest() {
     override fun createConnectedAgent(databaseName: String): DatabaseAgent {

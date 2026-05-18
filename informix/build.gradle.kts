@@ -20,7 +20,7 @@ tasks.shadowJar {
     archiveBaseName.set("dbx-agent-informix")
     archiveClassifier.set("")
     manifest {
-        attributes("Agent-Label" to "IBM Informix", "Main-Class" to "com.dbx.agent.informix.InformixAgentKt")
+        attributes("Agent-Label" to "IBM Informix", "Main-Class" to "com.dbx.agent.informix.InformixAgent")
     }
 }
 
