@@ -86,11 +86,27 @@ def validate_manifest_fields(root: Path, modules: set[str]) -> list[str]:
         )
         if not archive_convention and not archive_pattern.search(text):
             problems.append(f"{relative}: missing {expected_archive}")
-        if not re.search(r"['\"]Agent-Label['\"]", text):
+        attrs = manifest_attributes(text)
+        if "Agent-Label" not in attrs:
             problems.append(f"{relative}: missing Agent-Label manifest attribute")
-        if not re.search(r"['\"]Main-Class['\"]", text):
+        main_class = attrs.get("Main-Class")
+        if main_class is None:
             problems.append(f"{relative}: missing Main-Class manifest attribute")
+        else:
+            main_source = root / module / "src/main/java" / Path(*main_class.split(".")).with_suffix(".java")
+            if not main_source.exists():
+                problems.append(f"{relative}: Main-Class source not found: {main_source.relative_to(root)}")
     return problems
+
+
+def manifest_attributes(build_text: str) -> dict[str, str]:
+    attrs: dict[str, str] = {}
+    for key, value in re.findall(
+        r"['\"]([^'\"]+)['\"]\s*:\s*['\"]([^'\"]+)['\"]",
+        build_text,
+    ):
+        attrs[key] = value
+    return attrs
 
 
 def validate(root: Path) -> list[str]:

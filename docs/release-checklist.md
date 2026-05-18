@@ -35,6 +35,7 @@ Also run the lightweight validation gates:
 ```bash
 python3 -m unittest discover -s scripts -p '*_test.py'
 python3 scripts/validate_agents.py
+python3 scripts/validate_agent_jars.py
 git diff --check
 ```
 
@@ -42,6 +43,7 @@ Expected result:
 
 - Python script tests pass.
 - `Agent validation passed`.
+- `Agent jar validation passed` after `shadowJar` has produced jars.
 - `git diff --check` prints nothing.
 - Gradle finishes with `BUILD SUCCESSFUL`.
 
@@ -75,6 +77,7 @@ This checks:
 - Root Gradle conventions define agent archive names.
 - Agent manifests define `Agent-Label`.
 - Agent manifests define `Main-Class`.
+- Agent `Main-Class` source exists and the built jar contains the matching `.class`.
 - Forbidden legacy execution patterns are absent.
 - Disallowed JVM source/build DSL residue is absent outside Gradle output directories.
 
@@ -130,6 +133,7 @@ The CI workflow runs on `main` and pull requests:
 python3 -m unittest discover -s scripts -p '*_test.py'
 python3 scripts/validate_agents.py
 ./gradlew test shadowJar --continue
+python3 scripts/validate_agent_jars.py
 ```
 
 Do not tag a release while CI is failing on `main`.

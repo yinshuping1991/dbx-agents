@@ -2,9 +2,11 @@ import json
 import tempfile
 import textwrap
 import unittest
+import zipfile
 from pathlib import Path
 
 import validate_agents
+import validate_agent_jars
 
 
 class ValidateAgentsTest(unittest.TestCase):
@@ -97,6 +99,44 @@ class ValidateAgentsTest(unittest.TestCase):
                 problems,
             )
 
+    def test_manifest_validation_requires_main_class_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            module = root / "h2"
+            module.mkdir()
+            (root / "build.gradle").write_text(
+                'archiveBaseName = "dbx-agent-${project.name}"\n',
+                encoding="utf-8",
+            )
+            (module / "build.gradle").write_text(
+                textwrap.dedent(
+                    """
+                    tasks.named('shadowJar') {
+                        manifest {
+                            attributes(
+                                'Agent-Label': 'H2',
+                                'Main-Class': 'com.dbx.agent.h2.H2Agent'
+                            )
+                        }
+                    }
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            problems = validate_agents.validate_manifest_fields(root, {"h2"})
+
+            self.assertEqual(
+                ["h2/build.gradle: Main-Class source not found: h2/src/main/java/com/dbx/agent/h2/H2Agent.java"],
+                problems,
+            )
+
+            source = module / "src/main/java/com/dbx/agent/h2/H2Agent.java"
+            source.parent.mkdir(parents=True)
+            source.write_text("package com.dbx.agent.h2; public final class H2Agent {}", encoding="utf-8")
+
+            self.assertEqual([], validate_agents.validate_manifest_fields(root, {"h2"}))
+
     def test_kotlin_residue_scan_rejects_kt_and_kts_files_outside_build_dirs(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -122,6 +162,29 @@ class ValidateAgentsTest(unittest.TestCase):
                 ],
                 problems,
             )
+
+    def test_agent_jar_validation_requires_main_class_entry(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            jar = root / "h2/build/libs/dbx-agent-h2.jar"
+            jar.parent.mkdir(parents=True)
+            with zipfile.ZipFile(jar, "w") as archive:
+                archive.writestr(
+                    "META-INF/MANIFEST.MF",
+                    "Manifest-Version: 1.0\n"
+                    "Agent-Label: H2\n"
+                    "Main-Class: com.dbx.agent.h2.H2Agent\n\n",
+                )
+
+            self.assertEqual(
+                ["h2/build/libs/dbx-agent-h2.jar: Main-Class class not found: com/dbx/agent/h2/H2Agent.class"],
+                validate_agent_jars.validate_agent_jars(root),
+            )
+
+            with zipfile.ZipFile(jar, "a") as archive:
+                archive.writestr("com/dbx/agent/h2/H2Agent.class", b"class-bytes")
+
+            self.assertEqual([], validate_agent_jars.validate_agent_jars(root))
 
 
 if __name__ == "__main__":
