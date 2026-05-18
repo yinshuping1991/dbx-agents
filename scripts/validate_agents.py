@@ -67,6 +67,11 @@ def validate_no_kotlin_residue(root: Path) -> list[str]:
 
 def validate_manifest_fields(root: Path, modules: set[str]) -> list[str]:
     problems: list[str] = []
+    root_build_text = (root / "build.gradle").read_text(encoding="utf-8") if (root / "build.gradle").exists() else ""
+    archive_convention = re.search(
+        r"archiveBaseName\s*=\s*['\"]dbx-agent-\$\{project\.name\}['\"]",
+        root_build_text,
+    )
     for module in sorted(modules):
         build_file = root / module / "build.gradle"
         relative = build_file.relative_to(root)
@@ -79,7 +84,7 @@ def validate_manifest_fields(root: Path, modules: set[str]) -> list[str]:
         archive_pattern = re.compile(
             rf"archiveBaseName\s*=\s*['\"]dbx-agent-{re.escape(module)}['\"]"
         )
-        if not archive_pattern.search(text):
+        if not archive_convention and not archive_pattern.search(text):
             problems.append(f"{relative}: missing {expected_archive}")
         if not re.search(r"['\"]Agent-Label['\"]", text):
             problems.append(f"{relative}: missing Agent-Label manifest attribute")

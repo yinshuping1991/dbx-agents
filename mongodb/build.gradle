@@ -1,27 +1,10 @@
-plugins {
-    id 'java'
-    id 'com.gradleup.shadow'
-}
-
 dependencies {
     implementation 'org.mongodb:mongodb-driver-sync:4.11.4'
     implementation 'com.google.code.gson:gson:2.11.0'
 }
 
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-}
-
 tasks.named('shadowJar') {
-    archiveBaseName = 'dbx-agent-mongodb'
-    archiveClassifier = ''
     manifest {
         attributes('Agent-Label': 'MongoDB (Legacy)', 'Main-Class': 'com.dbx.agent.mongodb.MongoAgent')
     }
-}
-
-tasks.named('test') {
-    useJUnitPlatform()
 }

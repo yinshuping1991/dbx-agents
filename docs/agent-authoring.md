@@ -131,10 +131,11 @@ Use this when the driver is redistributable from Maven Central or another permit
 
 ```groovy
 dependencies {
-    implementation project(':common')
     implementation 'com.example:example-jdbc:1.2.3'
 }
 ```
+
+The root Gradle convention supplies `project(':common')`, `project(':test-support')`, JUnit, Java toolchains, the Shadow plugin, and the `dbx-agent-<module>` archive name for included agent modules.
 
 No manifest flag is needed.
 
@@ -144,7 +145,6 @@ Use this when the driver cannot be redistributed or must be supplied by the user
 
 ```groovy
 dependencies {
-    implementation project(':common')
     implementation fileTree(dir: 'libs', include: ['*.jar'])
 }
 
@@ -167,10 +167,11 @@ When adding an agent named `exampledb`:
 
 - Add `include 'exampledb'` to `settings.gradle`.
 - Add `"exampledb": "0.1.0"` to `versions.json`.
-- Set `archiveBaseName` to `dbx-agent-exampledb`.
 - Set `Agent-Label` to the user-facing database name.
 - Set `Main-Class` to the Java agent class, usually `com.dbx.agent.exampledb.ExampledbAgent`.
 - Add the database to the README support table.
+
+The root `build.gradle` convention derives the archive name from the module name, so `exampledb` builds `dbx-agent-exampledb.jar` without per-module archive configuration.
 
 `versions.json` must contain only modules included in `settings.gradle`, excluding infrastructure modules such as `common` and `test-support`.
 
@@ -179,14 +180,18 @@ When adding an agent named `exampledb`:
 Default to:
 
 ```groovy
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
+def java8Projects = ['common', 'test-support', 'oracle-10g'] as Set
+
+subprojects {
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(java8Projects.contains(name) ? 8 : 21)
+        }
     }
 }
 ```
 
-Only use JRE 8 for drivers that require it, such as legacy Oracle 10g support. If an agent needs a special runtime, update the release workflow JRE detection logic and document the reason in the module.
+Only use JRE 8 for drivers that require it, such as legacy Oracle 10g support. If an agent needs a special runtime, update the root Gradle convention, the release workflow JRE detection logic, and document the reason in the module.
 
 ## Tests
 
@@ -303,7 +308,8 @@ Before opening a PR or release:
 - `setSchemaSQL` quotes identifiers or returns an empty string.
 - `disconnect` closes and clears the connection.
 - `testConnection` closes its temporary connection.
-- `build.gradle` has correct `archiveBaseName`, `Agent-Label`, `Main-Class`, dependencies, and external driver flag.
+- Root `build.gradle` conventions cover Java plugin, toolchain, JUnit, common/test-support dependencies, Shadow plugin, and archive name.
+- Module `build.gradle` has correct driver dependencies, `Agent-Label`, `Main-Class`, and external driver flag.
 - `settings.gradle`, `versions.json`, and README are updated together.
 - At least one execution-path regression test exists.
 - `python3 scripts/validate_agents.py` passes.

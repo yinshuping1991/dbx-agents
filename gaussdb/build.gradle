@@ -1,30 +1,10 @@
-plugins {
-    id 'java'
-    id 'com.gradleup.shadow'
-}
-
 dependencies {
-    implementation project(':common')
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation 'org.opengauss:opengauss-jdbc:6.0.0-og'
-    testImplementation project(':test-support')
-    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
-}
-
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
 }
 
 tasks.named('shadowJar') {
-    archiveBaseName = 'dbx-agent-gaussdb'
-    archiveClassifier = ''
     manifest {
         attributes('Agent-Label': 'GaussDB', 'Main-Class': 'com.dbx.agent.gaussdb.GaussdbAgent')
     }
-}
-
-tasks.named('test') {
-    useJUnitPlatform()
 }

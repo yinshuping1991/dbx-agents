@@ -72,7 +72,7 @@ python3 scripts/validate_agents.py
 This checks:
 
 - `versions.json` keys match included agent modules in `settings.gradle`.
-- Agent modules define `archiveBaseName`.
+- Root Gradle conventions define agent archive names.
 - Agent manifests define `Agent-Label`.
 - Agent manifests define `Main-Class`.
 - Forbidden legacy execution patterns are absent.
@@ -83,7 +83,8 @@ When adding or removing an agent, update these files together:
 - `settings.gradle`
 - `versions.json`
 - `README.md`
-- Agent module `build.gradle`
+- Agent module `build.gradle` for driver dependencies and manifest attributes
+- Root `build.gradle` only when the module needs non-standard shared build behavior
 
 ## 5. Driver Packaging
 

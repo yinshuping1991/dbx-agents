@@ -1,29 +1,10 @@
-plugins {
-    id 'java'
-    id 'com.gradleup.shadow'
-}
-
 dependencies {
-    implementation project(':common')
     implementation fileTree(dir: 'libs', include: ['*.jar'])
     implementation 'org.neo4j:neo4j-jdbc-full-bundle:6.10.0'
-    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
-}
-
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
 }
 
 tasks.named('shadowJar') {
-    archiveBaseName = 'dbx-agent-neo4j'
-    archiveClassifier = ''
     manifest {
         attributes('Agent-Label': 'Neo4j', 'Main-Class': 'com.dbx.agent.neo4j.Neo4jAgent')
     }
-}
-
-tasks.named('test') {
-    useJUnitPlatform()
 }

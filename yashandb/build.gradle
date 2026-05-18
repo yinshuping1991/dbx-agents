@@ -1,29 +1,9 @@
-plugins {
-    id 'java'
-    id 'com.gradleup.shadow'
-}
-
 dependencies {
-    implementation project(':common')
     implementation 'com.yashandb:yashandb-jdbc:1.9.27'
-    testImplementation project(':test-support')
-    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
-}
-
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
 }
 
 tasks.named('shadowJar') {
-    archiveBaseName = 'dbx-agent-yashandb'
-    archiveClassifier = ''
     manifest {
         attributes('Agent-Label': '崖山 YashanDB', 'Main-Class': 'com.dbx.agent.yashandb.YashandbAgent')
     }
-}
-
-tasks.named('test') {
-    useJUnitPlatform()
 }

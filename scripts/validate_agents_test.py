@@ -63,12 +63,22 @@ class ValidateAgentsTest(unittest.TestCase):
             root = Path(tmp)
             module = root / "h2"
             module.mkdir()
+            (root / "build.gradle").write_text(
+                textwrap.dedent(
+                    """
+                    configure(agentProjects) {
+                        tasks.named('shadowJar') {
+                            archiveBaseName = "dbx-agent-${project.name}"
+                        }
+                    }
+                    """
+                ),
+                encoding="utf-8",
+            )
             (module / "build.gradle").write_text(
                 textwrap.dedent(
                     """
                     tasks.named('shadowJar') {
-                        archiveBaseName = 'dbx-agent-h2'
-                        archiveClassifier = ''
                         manifest {
                             attributes(
                                 'Agent-Label': 'H2'
