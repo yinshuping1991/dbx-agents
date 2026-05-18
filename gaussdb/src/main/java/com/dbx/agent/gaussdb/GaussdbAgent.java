@@ -130,7 +130,7 @@ public final class GaussdbAgent extends BaseDatabaseAgent {
         return unchecked(() -> {
             String upperType = objectType.toUpperCase(Locale.ROOT);
             String sql = switch (upperType) {
-                case "VIEW" -> "SELECT pg_get_viewdef('\"" + schema + "\".\"" + name + "\"'::regclass, true)";
+                case "VIEW" -> "SELECT pg_get_viewdef(to_regclass(?), true)";
                 case "FUNCTION" -> """
                     SELECT pg_get_functiondef(p.oid)
                     FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
@@ -148,8 +148,11 @@ public final class GaussdbAgent extends BaseDatabaseAgent {
 
             String source;
             if ("VIEW".equals(upperType)) {
-                try (var stmt = requireConnected().createStatement(); ResultSet rs = stmt.executeQuery(sql)) {
-                    source = rs.next() ? coalesce(rs.getString(1)) : "";
+                try (var stmt = requireConnected().prepareStatement(sql)) {
+                    stmt.setString(1, quoteQualifiedIdentifier(schema, name));
+                    try (ResultSet rs = stmt.executeQuery()) {
+                        source = rs.next() ? coalesce(rs.getString(1)) : "";
+                    }
                 }
             } else {
                 try (var stmt = requireConnected().prepareStatement(sql)) {
@@ -415,6 +418,10 @@ public final class GaussdbAgent extends BaseDatabaseAgent {
 
     private static String coalesce(String value) {
         return value == null ? "" : value;
+    }
+
+    private static String quoteQualifiedIdentifier(String schema, String name) {
+        return JdbcIdentifiers.INSTANCE.doubleQuote(schema) + "." + JdbcIdentifiers.INSTANCE.doubleQuote(name);
     }
 
     private static Integer intOrNull(ResultSet rs, String column) throws Exception {

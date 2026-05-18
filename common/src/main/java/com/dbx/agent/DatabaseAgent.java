@@ -92,40 +92,11 @@ public interface DatabaseAgent {
     Connection getConnection();
 
     default QueryResult executeTransaction(List<String> statements, String schema) {
-        return unchecked(() -> {
-            Connection conn = getConnection();
-            if (conn == null) {
-                throw new IllegalStateException("Not connected");
-            }
-            boolean savedAutoCommit = conn.getAutoCommit();
-            conn.setAutoCommit(false);
-            long start = System.currentTimeMillis();
-            try {
-                if (schema != null && !schema.trim().isEmpty()) {
-                    try (java.sql.Statement stmt = conn.createStatement()) {
-                        stmt.execute(setSchemaSQL(schema));
-                    }
-                }
-                long totalAffected = 0;
-                for (String sql : statements) {
-                    try (java.sql.Statement stmt = conn.createStatement()) {
-                        totalAffected += stmt.executeUpdate(trimSql(sql));
-                    }
-                }
-                conn.commit();
-                return new QueryResult(
-                    Collections.emptyList(),
-                    Collections.emptyList(),
-                    totalAffected,
-                    System.currentTimeMillis() - start
-                );
-            } catch (Exception e) {
-                conn.rollback();
-                throw e;
-            } finally {
-                conn.setAutoCommit(savedAutoCommit);
-            }
-        });
+        Connection conn = getConnection();
+        if (conn == null) {
+            throw new IllegalStateException("Not connected");
+        }
+        return TransactionExecutor.executeUpdateStatements(conn, statements, schema, this::setSchemaSQL);
     }
 
     default String setSchemaSQL(String schema) {

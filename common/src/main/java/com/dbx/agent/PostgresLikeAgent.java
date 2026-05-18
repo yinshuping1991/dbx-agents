@@ -139,7 +139,7 @@ public abstract class PostgresLikeAgent implements DatabaseAgent {
             String upperType = objectType.toUpperCase();
             String sql;
             if ("VIEW".equals(upperType)) {
-                sql = "SELECT pg_get_viewdef('\"" + schema + "\".\"" + name + "\"'::regclass, true)";
+                sql = "SELECT pg_get_viewdef(to_regclass(?), true)";
             } else if ("FUNCTION".equals(upperType)) {
                 sql = "SELECT pg_get_functiondef(p.oid)\n" +
                     "FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace\n" +
@@ -156,8 +156,11 @@ public abstract class PostgresLikeAgent implements DatabaseAgent {
 
             String source;
             if ("VIEW".equals(upperType)) {
-                try (java.sql.Statement stmt = requireConnection().createStatement(); ResultSet rs = stmt.executeQuery(sql)) {
-                    source = rs.next() ? coalesce(rs.getString(1)) : "";
+                try (java.sql.PreparedStatement stmt = requireConnection().prepareStatement(sql)) {
+                    stmt.setString(1, quoteQualifiedIdentifier(schema, name));
+                    try (ResultSet rs = stmt.executeQuery()) {
+                        source = rs.next() ? coalesce(rs.getString(1)) : "";
+                    }
                 }
             } else {
                 try (java.sql.PreparedStatement stmt = requireConnection().prepareStatement(sql)) {
@@ -372,39 +375,7 @@ public abstract class PostgresLikeAgent implements DatabaseAgent {
 
     @Override
     public QueryResult executeTransaction(List<String> statements, String schema) {
-        return unchecked(() -> {
-            Connection conn = requireConnection();
-            boolean savedAutoCommit = conn.getAutoCommit();
-            conn.setAutoCommit(false);
-            long start = System.currentTimeMillis();
-            try {
-                if (schema != null && !schema.trim().isEmpty()) {
-                    try (java.sql.Statement stmt = conn.createStatement()) {
-                        stmt.execute(setSchemaSQL(schema));
-                    }
-                }
-
-                long totalAffected = 0;
-                for (String statement : statements) {
-                    try (java.sql.Statement stmt = conn.createStatement()) {
-                        totalAffected += stmt.executeUpdate(trimSql(statement));
-                    }
-                }
-                conn.commit();
-                return new QueryResult(
-                    Collections.emptyList(),
-                    Collections.emptyList(),
-                    totalAffected,
-                    System.currentTimeMillis() - start,
-                    false
-                );
-            } catch (Exception e) {
-                conn.rollback();
-                throw e;
-            } finally {
-                conn.setAutoCommit(savedAutoCommit);
-            }
-        });
+        return TransactionExecutor.executeUpdateStatements(requireConnection(), statements, schema, this::setSchemaSQL);
     }
 
     @Override
@@ -472,6 +443,10 @@ public abstract class PostgresLikeAgent implements DatabaseAgent {
 
     private static String coalesce(String value) {
         return value == null ? "" : value;
+    }
+
+    private static String quoteQualifiedIdentifier(String schema, String name) {
+        return JdbcIdentifiers.INSTANCE.doubleQuote(schema) + "." + JdbcIdentifiers.INSTANCE.doubleQuote(name);
     }
 
     private static String trimSql(String sql) {

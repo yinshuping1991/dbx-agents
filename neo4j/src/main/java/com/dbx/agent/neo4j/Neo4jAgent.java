@@ -11,6 +11,7 @@ import com.dbx.agent.JdbcExecutor;
 import com.dbx.agent.JsonRpcServer;
 import com.dbx.agent.QueryResult;
 import com.dbx.agent.TableInfo;
+import com.dbx.agent.TransactionExecutor;
 import com.dbx.agent.TriggerInfo;
 
 import java.sql.Connection;
@@ -187,33 +188,9 @@ public class Neo4jAgent extends BaseDatabaseAgent {
 
     @Override
     public QueryResult executeTransaction(List<String> statements, String schema) {
-        return unchecked(() -> {
-            Connection conn = requireConnected();
-            boolean savedAutoCommit = conn.getAutoCommit();
-            conn.setAutoCommit(false);
-            long start = System.currentTimeMillis();
-            try {
-                long totalAffected = 0;
-                for (String sql : statements) {
-                    try (Statement stmt = conn.createStatement()) {
-                        stmt.execute(trimSql(sql));
-                        totalAffected += Math.max(stmt.getUpdateCount(), 0);
-                    }
-                }
-                conn.commit();
-                return new QueryResult(
-                    Collections.emptyList(),
-                    Collections.emptyList(),
-                    totalAffected,
-                    System.currentTimeMillis() - start,
-                    false
-                );
-            } catch (Exception e) {
-                conn.rollback();
-                throw e;
-            } finally {
-                conn.setAutoCommit(savedAutoCommit);
-            }
+        return TransactionExecutor.executeStatements(requireConnected(), statements, schema, this::setSchemaSQL, (stmt, sql) -> {
+            stmt.execute(sql);
+            return Math.max(stmt.getUpdateCount(), 0);
         });
     }
 
@@ -285,14 +262,6 @@ public class Neo4jAgent extends BaseDatabaseAgent {
         } catch (Exception ignored) {
             return null;
         }
-    }
-
-    private static String trimSql(String sql) {
-        String trimmed = sql.trim();
-        while (trimmed.endsWith(";")) {
-            trimmed = trimmed.substring(0, trimmed.length() - 1).trim();
-        }
-        return trimmed;
     }
 
     public static void main(String[] args) {

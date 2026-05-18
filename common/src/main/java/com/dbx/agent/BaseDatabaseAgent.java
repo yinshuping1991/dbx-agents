@@ -64,39 +64,7 @@ public abstract class BaseDatabaseAgent implements DatabaseAgent {
 
     @Override
     public QueryResult executeTransaction(List<String> statements, String schema) {
-        return unchecked(() -> {
-            Connection conn = requireConnected();
-            boolean savedAutoCommit = conn.getAutoCommit();
-            conn.setAutoCommit(false);
-            long start = System.currentTimeMillis();
-            try {
-                if (schema != null && !schema.trim().isEmpty()) {
-                    try (java.sql.Statement stmt = conn.createStatement()) {
-                        stmt.execute(setSchemaSQL(schema));
-                    }
-                }
-
-                long totalAffected = 0;
-                for (String statement : statements) {
-                    try (java.sql.Statement stmt = conn.createStatement()) {
-                        totalAffected += stmt.executeUpdate(trimSql(statement));
-                    }
-                }
-                conn.commit();
-                return new QueryResult(
-                    Collections.emptyList(),
-                    Collections.emptyList(),
-                    totalAffected,
-                    System.currentTimeMillis() - start,
-                    false
-                );
-            } catch (Exception e) {
-                conn.rollback();
-                throw e;
-            } finally {
-                conn.setAutoCommit(savedAutoCommit);
-            }
-        });
+        return TransactionExecutor.executeUpdateStatements(requireConnected(), statements, schema, this::setSchemaSQL);
     }
 
     protected Connection requireConnected() {
@@ -105,14 +73,6 @@ public abstract class BaseDatabaseAgent implements DatabaseAgent {
             throw new IllegalStateException("Not connected");
         }
         return conn;
-    }
-
-    private static String trimSql(String sql) {
-        String trimmed = sql.trim();
-        while (trimmed.endsWith(";")) {
-            trimmed = trimmed.substring(0, trimmed.length() - 1).trim();
-        }
-        return trimmed;
     }
 
     protected static <T> T unchecked(ThrowingSupplier<T> supplier) {

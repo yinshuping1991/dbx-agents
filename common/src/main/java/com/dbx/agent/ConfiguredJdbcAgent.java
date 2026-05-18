@@ -330,39 +330,7 @@ public abstract class ConfiguredJdbcAgent implements DatabaseAgent {
 
     @Override
     public QueryResult executeTransaction(List<String> statements, String schema) {
-        return unchecked(() -> {
-            Connection conn = requireConnection();
-            boolean savedAutoCommit = conn.getAutoCommit();
-            conn.setAutoCommit(false);
-            long start = System.currentTimeMillis();
-            try {
-                if (schema != null && !schema.trim().isEmpty()) {
-                    try (java.sql.Statement stmt = conn.createStatement()) {
-                        stmt.execute(setSchemaSQL(schema));
-                    }
-                }
-
-                long totalAffected = 0;
-                for (String statement : statements) {
-                    try (java.sql.Statement stmt = conn.createStatement()) {
-                        totalAffected += stmt.executeUpdate(trimSql(statement));
-                    }
-                }
-                conn.commit();
-                return new QueryResult(
-                    Collections.emptyList(),
-                    Collections.emptyList(),
-                    totalAffected,
-                    System.currentTimeMillis() - start,
-                    false
-                );
-            } catch (Exception e) {
-                conn.rollback();
-                throw e;
-            } finally {
-                conn.setAutoCommit(savedAutoCommit);
-            }
-        });
+        return TransactionExecutor.executeUpdateStatements(requireConnection(), statements, schema, this::setSchemaSQL);
     }
 
     @Override

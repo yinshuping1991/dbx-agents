@@ -15,7 +15,7 @@ public final class DdlBuilder {
         List<IndexInfo> indexes,
         List<ForeignKeyInfo> foreignKeys
     ) {
-        String tableRef = quoteIdent(schema) + "." + quoteIdent(table);
+        String tableRef = qualifiedName(schema, table);
         List<String> columnLines = new ArrayList<>();
         for (ColumnInfo column : columns) {
             StringBuilder line = new StringBuilder();
@@ -83,8 +83,10 @@ public final class DdlBuilder {
             ddl.append(";");
             if (notBlank(index.getComment())) {
                 ddl.append("\nCOMMENT ON INDEX ");
-                ddl.append(quoteIdent(schema));
-                ddl.append(".");
+                if (notBlank(schema)) {
+                    ddl.append(quoteIdent(schema));
+                    ddl.append(".");
+                }
                 ddl.append(quoteIdent(index.getName()));
                 ddl.append(" IS '");
                 ddl.append(index.getComment().replace("'", "''"));
@@ -97,6 +99,13 @@ public final class DdlBuilder {
 
     private static String quoteIdent(String identifier) {
         return JdbcIdentifiers.INSTANCE.doubleQuote(identifier);
+    }
+
+    private static String qualifiedName(String schema, String name) {
+        if (!notBlank(schema)) {
+            return quoteIdent(name);
+        }
+        return quoteIdent(schema) + "." + quoteIdent(name);
     }
 
     private static String columnTypeSql(ColumnInfo column) {
