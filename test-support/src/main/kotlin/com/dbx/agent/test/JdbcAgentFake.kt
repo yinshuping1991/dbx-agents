@@ -109,7 +109,10 @@ object JdbcAgentFake {
 }
 
 fun setPrivateConnection(target: Any, connection: Connection) {
-    val field = target::class.java.getDeclaredField("connection")
+    val field = generateSequence<Class<*>>(target::class.java) { it.superclass }
+        .mapNotNull { type -> runCatching { type.getDeclaredField("connection") }.getOrNull() }
+        .firstOrNull()
+        ?: throw NoSuchFieldException("connection")
     field.isAccessible = true
     field.set(target, connection)
 }

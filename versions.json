@@ -20,5 +20,6 @@
   "trino": "0.1.4",
   "vastbase": "0.1.4",
   "mongodb": "0.1.3",
-  "highgo": "0.1.2"
+  "highgo": "0.1.2",
+  "yashandb": "0.1.0"
 }

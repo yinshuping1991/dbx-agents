@@ -28,6 +28,7 @@ Each agent runs as a standalone JVM process and communicates with DBX via stdin/
 | sundb | SunDB | SunDB JDBC |
 | gaussdb | GaussDB | GaussDB JDBC |
 | tdengine | TDengine | taos-jdbcdriver (WebSocket) |
+| yashandb | 崖山 YashanDB | YashanDB JDBC |
 
 ## Multi-JRE Support
 
