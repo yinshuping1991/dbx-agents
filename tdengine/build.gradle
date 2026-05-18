@@ -1,0 +1,30 @@
+plugins {
+    id 'java'
+    id 'com.gradleup.shadow'
+}
+
+dependencies {
+    implementation project(':common')
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation 'com.taosdata.jdbc:taos-jdbcdriver:3.6.3'
+    testImplementation project(':test-support')
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+tasks.named('shadowJar') {
+    archiveBaseName = 'dbx-agent-tdengine'
+    archiveClassifier = ''
+    manifest {
+        attributes('Agent-Label': 'TDengine', 'Main-Class': 'com.dbx.agent.tdengine.TDengineAgent')
+    }
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

@@ -11,8 +11,8 @@ class ValidateAgentsTest(unittest.TestCase):
     def test_versions_must_match_included_agent_modules(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "settings.gradle.kts").write_text(
-                'include("common", "test-support", "h2", "oracle")\n',
+            (root / "settings.gradle").write_text(
+                "include 'common', 'test-support', 'h2', 'oracle'\n",
                 encoding="utf-8",
             )
             (root / "versions.json").write_text(
@@ -33,7 +33,7 @@ class ValidateAgentsTest(unittest.TestCase):
     def test_source_scan_rejects_old_execute_query_patterns(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            source = root / "h2/src/main/kotlin/com/dbx/agent/h2/H2Agent.kt"
+            source = root / "h2/src/main/java/com/dbx/agent/h2/H2Agent.java"
             source.parent.mkdir(parents=True)
             source.write_text(
                 textwrap.dedent(
@@ -52,8 +52,8 @@ class ValidateAgentsTest(unittest.TestCase):
 
             self.assertEqual(
                 [
-                    "h2/src/main/kotlin/com/dbx/agent/h2/H2Agent.kt:2: forbidden local SQL prefix classifier",
-                    "h2/src/main/kotlin/com/dbx/agent/h2/H2Agent.kt:5: forbidden executeUpdate(trimmedSql) in query execution",
+                    "h2/src/main/java/com/dbx/agent/h2/H2Agent.java:2: forbidden local SQL prefix classifier",
+                    "h2/src/main/java/com/dbx/agent/h2/H2Agent.java:5: forbidden executeUpdate(trimmedSql) in query execution",
                 ],
                 problems,
             )
@@ -63,14 +63,16 @@ class ValidateAgentsTest(unittest.TestCase):
             root = Path(tmp)
             module = root / "h2"
             module.mkdir()
-            (module / "build.gradle.kts").write_text(
+            (module / "build.gradle").write_text(
                 textwrap.dedent(
                     """
-                    tasks.shadowJar {
-                        archiveBaseName.set("dbx-agent-h2")
-                        archiveClassifier.set("")
+                    tasks.named('shadowJar') {
+                        archiveBaseName = 'dbx-agent-h2'
+                        archiveClassifier = ''
                         manifest {
-                            attributes("Agent-Label" to "H2")
+                            attributes(
+                                'Agent-Label': 'H2'
+                            )
                         }
                     }
                     """
@@ -81,7 +83,33 @@ class ValidateAgentsTest(unittest.TestCase):
             problems = validate_agents.validate_manifest_fields(root, {"h2"})
 
             self.assertEqual(
-                ["h2/build.gradle.kts: missing Main-Class manifest attribute"],
+                ["h2/build.gradle: missing Main-Class manifest attribute"],
+                problems,
+            )
+
+    def test_kotlin_residue_scan_rejects_kt_and_kts_files_outside_build_dirs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            forbidden_source = root / "h2/src/main/kotlin/com/dbx/agent/h2/H2Agent.kt"
+            forbidden_build = root / "settings.gradle.kts"
+            ignored_build_output = root / "h2/build/tmp/Generated.kt"
+            ignored_gradle_cache = root / ".gradle/caches/init.gradle.kts"
+            for path in (
+                forbidden_source,
+                forbidden_build,
+                ignored_build_output,
+                ignored_gradle_cache,
+            ):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("", encoding="utf-8")
+
+            problems = validate_agents.validate_no_kotlin_residue(root)
+
+            self.assertEqual(
+                [
+                    "h2/src/main/kotlin/com/dbx/agent/h2/H2Agent.kt: forbidden Kotlin file",
+                    "settings.gradle.kts: forbidden Kotlin file",
+                ],
                 problems,
             )
 

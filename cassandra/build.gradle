@@ -1,0 +1,30 @@
+plugins {
+    id 'java'
+    id 'com.gradleup.shadow'
+}
+
+dependencies {
+    implementation project(':common')
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation 'com.ing.data:cassandra-jdbc-wrapper:4.12.0'
+    testImplementation project(':test-support')
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+tasks.named('shadowJar') {
+    archiveBaseName = 'dbx-agent-cassandra'
+    archiveClassifier = ''
+    manifest {
+        attributes('Agent-Label': 'Apache Cassandra', 'Main-Class': 'com.dbx.agent.cassandra.CassandraAgent')
+    }
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

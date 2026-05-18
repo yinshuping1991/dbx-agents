@@ -8,7 +8,7 @@ Recommended flow:
 2. Replace the driver class and JDBC URL builder.
 3. Implement metadata SQL using the target database system catalogs or `DatabaseMetaData`.
 4. Keep `executeQuery` delegated to `JdbcExecutor`.
-5. Add the module to `settings.gradle.kts`, `versions.json`, and the root README support table.
+5. Add the module to `settings.gradle`, `versions.json`, and the root README support table.
 6. Run `./gradlew :<agent>:test :<agent>:shadowJar`.
 
 See `docs/agent-authoring.md` for the full checklist.

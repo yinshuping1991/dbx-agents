@@ -1,0 +1,31 @@
+plugins {
+    id 'java'
+    id 'com.gradleup.shadow'
+}
+
+dependencies {
+    implementation project(':common')
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation 'org.apache.hive:hive-jdbc:4.0.1:standalone'
+    implementation 'org.slf4j:slf4j-nop:1.7.30'
+    testImplementation project(':test-support')
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+tasks.named('shadowJar') {
+    archiveBaseName = 'dbx-agent-hive'
+    archiveClassifier = ''
+    manifest {
+        attributes('Agent-Label': 'Apache Hive', 'Main-Class': 'com.dbx.agent.hive.HiveAgent')
+    }
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

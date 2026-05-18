@@ -1,0 +1,29 @@
+plugins {
+    id 'java'
+    id 'com.gradleup.shadow'
+}
+
+dependencies {
+    implementation project(':common')
+    implementation 'io.github.spannm:ucanaccess:5.1.5'
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+    testImplementation project(':test-support')
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+tasks.named('shadowJar') {
+    archiveBaseName = 'dbx-agent-access'
+    archiveClassifier = ''
+    manifest {
+        attributes('Agent-Label': 'Microsoft Access', 'Main-Class': 'com.dbx.agent.access.AccessAgent')
+    }
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

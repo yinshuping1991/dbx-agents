@@ -1,0 +1,30 @@
+plugins {
+    id 'java'
+    id 'com.gradleup.shadow'
+}
+
+dependencies {
+    implementation project(':common')
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
+    implementation 'com.highgo:HgdbJdbc:6.2.4'
+    testImplementation project(':test-support')
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.11.4'
+}
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+tasks.named('shadowJar') {
+    archiveBaseName = 'dbx-agent-highgo'
+    archiveClassifier = ''
+    manifest {
+        attributes('Agent-Label': '瀚高 HighGo', 'Main-Class': 'com.dbx.agent.highgo.HighgoAgent')
+    }
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

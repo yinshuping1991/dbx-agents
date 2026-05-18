@@ -71,18 +71,19 @@ python3 scripts/validate_agents.py
 
 This checks:
 
-- `versions.json` keys match included agent modules in `settings.gradle.kts`.
+- `versions.json` keys match included agent modules in `settings.gradle`.
 - Agent modules define `archiveBaseName`.
 - Agent manifests define `Agent-Label`.
 - Agent manifests define `Main-Class`.
 - Forbidden legacy execution patterns are absent.
+- Disallowed JVM source/build DSL residue is absent outside Gradle output directories.
 
 When adding or removing an agent, update these files together:
 
-- `settings.gradle.kts`
+- `settings.gradle`
 - `versions.json`
 - `README.md`
-- Agent module `build.gradle.kts`
+- Agent module `build.gradle`
 
 ## 5. Driver Packaging
 
@@ -93,11 +94,13 @@ For bundled drivers:
 
 For external drivers:
 
-- Use `implementation(fileTree("libs") { include("*.jar") })`.
+- Use `implementation fileTree(dir: 'libs', include: ['*.jar'])`.
 - Set the manifest attribute:
 
-```kotlin
-"Agent-External-Driver" to "true"
+```groovy
+attributes(
+    'Agent-External-Driver': 'true'
+)
 ```
 
 - Confirm release registry generation emits `external_driver_required: true`.

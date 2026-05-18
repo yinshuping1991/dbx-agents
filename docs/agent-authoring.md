@@ -7,7 +7,8 @@ This guide defines the expected shape of a DBX agent. Treat it as the checklist 
 Every agent is a standalone JVM process that:
 
 - Implements `com.dbx.agent.DatabaseAgent`.
-- Starts with `JsonRpcServer(<Agent>()).run()` in its `main` function.
+- Prefer extending `com.dbx.agent.BaseDatabaseAgent` for Java agents.
+- Starts with `new JsonRpcServer(new <Agent>()).run()` in its `main` method.
 - Talks to DBX over stdin/stdout JSON-RPC 2.0.
 - Uses JDBC for database access unless the module is explicitly designed around a non-JDBC protocol.
 - Produces one shadow JAR named `dbx-agent-<agent-name>.jar`.
@@ -19,7 +20,7 @@ The public behavior should be consistent across agents even when each database h
 Each agent must implement these capabilities:
 
 - `connect(params)`: load the driver class, build the JDBC URL, open one `Connection`, and store enough context for metadata calls.
-- `testConnection(params)`: open a short-lived connection and close it with `use`.
+- `testConnection(params)`: open a short-lived connection and close it with try-with-resources.
 - `listDatabases()`: return visible catalogs/databases when the database supports them; otherwise return one sensible default database.
 - `listSchemas()`: return schemas in stable order.
 - `listTables(schema)`: return table-like objects for the selected schema, with normalized `type` values where possible.
@@ -29,7 +30,7 @@ Each agent must implement these capabilities:
 - `listTriggers(schema, table)`: return triggers when available; return an empty list if the database has no trigger metadata.
 - `executeQuery(sql, schema, options)`: execute arbitrary user SQL through `JdbcExecutor`.
 - `disconnect()`: close the connection and clear the stored reference.
-- `getConnection()`: return the stored `Connection?`.
+- `getConnection()`: return the stored `Connection`.
 
 Throw `IllegalStateException("Not connected")` when a method requires a connection and none exists.
 
@@ -39,36 +40,39 @@ Do not classify statements by SQL prefix inside individual agents.
 
 Use:
 
-```kotlin
-override fun executeQuery(sql: String, schema: String?, options: ExecuteQueryOptions): QueryResult {
-    return JdbcExecutor.execute(
-        requireConnection(),
+```java
+@Override
+public QueryResult executeQuery(String sql, String schema, ExecuteQueryOptions options) {
+    return JdbcExecutor.INSTANCE.execute(
+        requireConnected(),
         sql,
         schema,
-        ::setSchemaSQL,
-        maxRows = options.maxRows,
-        fetchSize = options.fetchSize,
-    )
+        this::setSchemaSQL,
+        options.getMaxRows(),
+        options.getFetchSize(),
+        JdbcExecutor.INSTANCE::defaultResultValue
+    );
 }
 ```
 
 Some drivers return non-standard Java types from `ResultSet.getObject`. If a driver is safer when values are stringified, pass a value reader:
 
-```kotlin
-override fun executeQuery(sql: String, schema: String?, options: ExecuteQueryOptions): QueryResult {
-    return JdbcExecutor.execute(
-        requireConnection(),
+```java
+@Override
+public QueryResult executeQuery(String sql, String schema, ExecuteQueryOptions options) {
+    return JdbcExecutor.INSTANCE.execute(
+        requireConnected(),
         sql,
         schema,
-        ::setSchemaSQL,
-        maxRows = options.maxRows,
-        fetchSize = options.fetchSize,
-        valueReader = ::stringResultValue,
-    )
+        this::setSchemaSQL,
+        options.getMaxRows(),
+        options.getFetchSize(),
+        this::stringResultValue
+    );
 }
 
-private fun stringResultValue(rs: ResultSet, index: Int, sqlType: Int): Any? {
-    return rs.getString(index)
+private Object stringResultValue(ResultSet rs, int index, int sqlType) {
+    return unchecked(() -> rs.getString(index));
 }
 ```
 
@@ -97,16 +101,20 @@ Override `setSchemaSQL(schema)` for the database dialect.
 
 Use `JdbcIdentifiers` helpers when quoting identifiers:
 
-```kotlin
-override fun setSchemaSQL(schema: String): String {
-    return "SET SCHEMA ${JdbcIdentifiers.doubleQuote(schema)}"
+```java
+@Override
+public String setSchemaSQL(String schema) {
+    return "SET SCHEMA " + JdbcIdentifiers.INSTANCE.doubleQuote(schema);
 }
 ```
 
 If the database does not support a schema switching statement, return an empty string:
 
-```kotlin
-override fun setSchemaSQL(schema: String): String = ""
+```java
+@Override
+public String setSchemaSQL(String schema) {
+    return "";
+}
 ```
 
 Never concatenate unquoted user-provided schema names into schema-switching SQL unless the target database requires unquoted identifiers and the value has already been validated.
@@ -121,10 +129,10 @@ Each module chooses one of two driver modes.
 
 Use this when the driver is redistributable from Maven Central or another permitted repository:
 
-```kotlin
+```groovy
 dependencies {
-    implementation(project(":common"))
-    implementation("com.example:example-jdbc:1.2.3")
+    implementation project(':common')
+    implementation 'com.example:example-jdbc:1.2.3'
 }
 ```
 
@@ -134,18 +142,18 @@ No manifest flag is needed.
 
 Use this when the driver cannot be redistributed or must be supplied by the user:
 
-```kotlin
+```groovy
 dependencies {
-    implementation(project(":common"))
-    implementation(fileTree("libs") { include("*.jar") })
+    implementation project(':common')
+    implementation fileTree(dir: 'libs', include: ['*.jar'])
 }
 
-tasks.shadowJar {
+tasks.named('shadowJar') {
     manifest {
         attributes(
-            "Agent-Label" to "Example DB",
-            "Agent-External-Driver" to "true",
-            "Main-Class" to "com.dbx.agent.example.ExampleAgentKt",
+            'Agent-Label': 'Example DB',
+            'Agent-External-Driver': 'true',
+            'Main-Class': 'com.dbx.agent.example.ExampleAgent'
         )
     }
 }
@@ -157,22 +165,24 @@ The release workflow reads `Agent-External-Driver: true` and emits `external_dri
 
 When adding an agent named `exampledb`:
 
-- Add `include("exampledb")` to `settings.gradle.kts`.
+- Add `include 'exampledb'` to `settings.gradle`.
 - Add `"exampledb": "0.1.0"` to `versions.json`.
 - Set `archiveBaseName` to `dbx-agent-exampledb`.
 - Set `Agent-Label` to the user-facing database name.
-- Set `Main-Class` to the Kotlin generated main class, usually `com.dbx.agent.exampledb.ExampledbAgentKt`.
+- Set `Main-Class` to the Java agent class, usually `com.dbx.agent.exampledb.ExampledbAgent`.
 - Add the database to the README support table.
 
-`versions.json` must contain only modules included in `settings.gradle.kts`, excluding infrastructure modules such as `common` and `test-support`.
+`versions.json` must contain only modules included in `settings.gradle`, excluding infrastructure modules such as `common` and `test-support`.
 
 ## Runtime Selection
 
 Default to:
 
-```kotlin
-kotlin {
-    jvmToolchain(21)
+```groovy
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
 }
 ```
 
@@ -184,38 +194,80 @@ Every JDBC agent should have at least one execution-path regression test.
 
 For agents that can run with an embedded or in-memory database, prefer both shared behavior contracts:
 
-```kotlin
-class H2ExecutionBehaviorTest : JdbcExecutionBehaviorTest() {
-    override fun createConnectedAgent(databaseName: String): DatabaseAgent {
-        return createH2Agent(databaseName)
+```java
+import java.util.List;
+
+class H2ExecutionBehaviorTest extends JdbcExecutionBehaviorTest {
+    @Override
+    protected DatabaseAgent createConnectedAgent(String databaseName) {
+        return H2AgentFixtures.createConnectedAgent(databaseName);
     }
 
-    override fun resultSetSql(): String = "CALL 42"
-    override fun expectedResultSetColumns(): List<String> = listOf("42")
-    override fun expectedResultSetRows(): List<List<Any?>> = listOf(listOf(42))
-    override fun rowsSql(rowCount: Int): String = "SELECT X FROM SYSTEM_RANGE(1, $rowCount)"
-}
-
-class H2MetadataBehaviorTest : JdbcMetadataBehaviorTest() {
-    override fun createConnectedAgent(databaseName: String): DatabaseAgent {
-        return createH2Agent(databaseName)
+    @Override
+    protected String resultSetSql() {
+        return "CALL 42";
     }
 
-    override fun metadataFixtureSql(): List<String> = listOf(
-        "CREATE TABLE BETA_TABLE (ID INT PRIMARY KEY)",
-        "CREATE TABLE ALPHA_TABLE (ID INT PRIMARY KEY)",
-        "CREATE TABLE COLUMN_ORDER_SAMPLE (ID INT PRIMARY KEY, NAME VARCHAR(64), CREATED_AT TIMESTAMP)",
-    )
+    @Override
+    protected List<String> expectedResultSetColumns() {
+        return List.of("42");
+    }
 
-    override fun metadataSchema(): String = "PUBLIC"
-    override fun expectedTablesInOrder(): List<String> = listOf("ALPHA_TABLE", "BETA_TABLE", "COLUMN_ORDER_SAMPLE")
-    override fun metadataColumnsTable(): String = "COLUMN_ORDER_SAMPLE"
-    override fun expectedColumnsInOrder(): List<String> = listOf("ID", "NAME", "CREATED_AT")
+    @Override
+    protected List<List<Object>> expectedResultSetRows() {
+        return List.of(List.of(42));
+    }
+
+    @Override
+    protected String rowsSql(int rowCount) {
+        return "SELECT X FROM SYSTEM_RANGE(1, " + rowCount + ")";
+    }
 }
 
-private fun createH2Agent(databaseName: String): DatabaseAgent {
-    return H2Agent().apply {
-        connect(ConnectParams(database = "mem:$databaseName;DB_CLOSE_DELAY=-1"))
+class H2MetadataBehaviorTest extends JdbcMetadataBehaviorTest {
+    @Override
+    protected DatabaseAgent createConnectedAgent(String databaseName) {
+        return H2AgentFixtures.createConnectedAgent(databaseName);
+    }
+
+    @Override
+    protected List<String> metadataFixtureSql() {
+        return List.of(
+            "CREATE TABLE BETA_TABLE (ID INT PRIMARY KEY)",
+            "CREATE TABLE ALPHA_TABLE (ID INT PRIMARY KEY)",
+            "CREATE TABLE COLUMN_ORDER_SAMPLE (ID INT PRIMARY KEY, NAME VARCHAR(64), CREATED_AT TIMESTAMP)"
+        );
+    }
+
+    @Override
+    protected String metadataSchema() {
+        return "PUBLIC";
+    }
+
+    @Override
+    protected List<String> expectedTablesInOrder() {
+        return List.of("ALPHA_TABLE", "BETA_TABLE", "COLUMN_ORDER_SAMPLE");
+    }
+
+    @Override
+    protected String metadataColumnsTable() {
+        return "COLUMN_ORDER_SAMPLE";
+    }
+
+    @Override
+    protected List<String> expectedColumnsInOrder() {
+        return List.of("ID", "NAME", "CREATED_AT");
+    }
+}
+
+final class H2AgentFixtures {
+    private H2AgentFixtures() {
+    }
+
+    static DatabaseAgent createConnectedAgent(String databaseName) {
+        H2Agent agent = new H2Agent();
+        agent.connect(new ConnectParams("mem:" + databaseName + ";DB_CLOSE_DELAY=-1"));
+        return agent;
     }
 }
 ```
@@ -224,17 +276,21 @@ private fun createH2Agent(databaseName: String): DatabaseAgent {
 
 For agents that need unavailable commercial or external drivers, use the fake execution contract:
 
-```kotlin
-class ExampleAgentTest : JdbcFakeExecutionBehaviorTest() {
-    override fun createAgent(): DatabaseAgent {
-        return ExampleAgent()
+```java
+class ExampleAgentTest extends JdbcFakeExecutionBehaviorTest {
+    @Override
+    protected DatabaseAgent createAgent() {
+        return new ExampleAgent();
     }
 
-    override fun resultSetSql(): String = "SHOW TABLES"
+    @Override
+    protected String resultSetSql() {
+        return "SHOW TABLES";
+    }
 }
 ```
 
-`JdbcFakeExecutionBehaviorTest` injects a fake JDBC connection and verifies that `executeQuery` uses `Statement.execute`, reads the returned `ResultSet`, and does not fall back to `executeQuery` or `executeUpdate`. Use `testImplementation(project(":test-support"))` for this contract.
+`JdbcFakeExecutionBehaviorTest` injects a fake JDBC connection and verifies that `executeQuery` uses `Statement.execute`, reads the returned `ResultSet`, and does not fall back to `executeQuery` or `executeUpdate`. Use `testImplementation project(':test-support')` for this contract.
 
 ## Review Checklist
 
@@ -247,8 +303,8 @@ Before opening a PR or release:
 - `setSchemaSQL` quotes identifiers or returns an empty string.
 - `disconnect` closes and clears the connection.
 - `testConnection` closes its temporary connection.
-- `build.gradle.kts` has correct `archiveBaseName`, `Agent-Label`, `Main-Class`, dependencies, and external driver flag.
-- `settings.gradle.kts`, `versions.json`, and README are updated together.
+- `build.gradle` has correct `archiveBaseName`, `Agent-Label`, `Main-Class`, dependencies, and external driver flag.
+- `settings.gradle`, `versions.json`, and README are updated together.
 - At least one execution-path regression test exists.
 - `python3 scripts/validate_agents.py` passes.
 - `./gradlew test shadowJar --continue` passes.

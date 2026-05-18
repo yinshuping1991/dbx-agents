@@ -1,0 +1,17 @@
+plugins {
+    id 'com.gradleup.shadow' version '9.0.0-beta12' apply false
+}
+
+allprojects {
+    repositories {
+        mavenCentral()
+    }
+}
+
+subprojects {
+    plugins.withId('java') {
+        dependencies {
+            testRuntimeOnly 'org.junit.platform:junit-platform-launcher:1.11.4'
+        }
+    }
+}

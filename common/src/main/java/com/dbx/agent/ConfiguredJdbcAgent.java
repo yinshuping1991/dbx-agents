@@ -290,7 +290,7 @@ public abstract class ConfiguredJdbcAgent implements DatabaseAgent {
             foreignKeys = Collections.emptyList();
         }
 
-        return DatabaseAgentKt.buildTableDdl(schema, table, getColumns(schema, table), indexes, foreignKeys);
+        return DatabaseAgent.buildTableDdl(schema, table, getColumns(schema, table), indexes, foreignKeys);
     }
 
     @Override
