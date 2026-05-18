@@ -1,5 +1,6 @@
 package com.dbx.agent.oracle10g;
 
+import com.dbx.agent.test.TestSupport;
 import com.dbx.agent.BaseDatabaseAgent;
 import com.dbx.agent.DatabaseAgent;
 import com.dbx.agent.ObjectInfo;
@@ -37,7 +38,7 @@ class Oracle10gAgentTest extends JdbcFakeExecutionBehaviorTest {
     @Test
     void listsTablesViewsProceduresAndFunctions() {
         Oracle10gAgent agent = new Oracle10gAgent();
-        JdbcAgentFake.setPrivateConnection(agent, objectListConnection());
+        TestSupport.setPrivateConnection(agent, objectListConnection());
 
         List<ObjectInfo> objects = agent.listObjects("APP");
 
@@ -54,7 +55,7 @@ class Oracle10gAgentTest extends JdbcFakeExecutionBehaviorTest {
     @Test
     void loadsRoutineSourceFromDbmsMetadata() {
         Oracle10gAgent agent = new Oracle10gAgent();
-        JdbcAgentFake.setPrivateConnection(
+        TestSupport.setPrivateConnection(
             agent,
             metadataConnection(sql -> Arrays.asList(
                 Arrays.asList("CREATE OR REPLACE PROCEDURE APP_PROC AS BEGIN NULL; END;")

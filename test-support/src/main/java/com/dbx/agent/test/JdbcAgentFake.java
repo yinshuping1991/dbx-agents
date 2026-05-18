@@ -46,10 +46,6 @@ public final class JdbcAgentFake {
         return calls;
     }
 
-    public static void setPrivateConnection(Object target, Connection connection) {
-        TestSupport.setPrivateConnection(target, connection);
-    }
-
     private static Statement statement() {
         ResultSet resultSet = resultSet();
         return proxy(Statement.class, new MethodHandler() {

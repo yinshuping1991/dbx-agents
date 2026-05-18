@@ -1,5 +1,6 @@
 package com.dbx.agent.hive;
 
+import com.dbx.agent.test.TestSupport;
 import com.dbx.agent.test.JdbcAgentFake;
 import com.dbx.agent.test.JdbcMetadataSqlFake;
 import java.sql.Connection;
@@ -12,7 +13,7 @@ class HiveAgentMetadataTest {
     void quotesSchemaAndTableIdentifiersInMetadataSql() {
         HiveAgent agent = new HiveAgent();
         Connection fake = JdbcMetadataSqlFake.connection();
-        JdbcAgentFake.setPrivateConnection(agent, fake);
+        TestSupport.setPrivateConnection(agent, fake);
 
         agent.listTables("bad`schema");
         agent.getColumns("bad`schema", "bad`table");

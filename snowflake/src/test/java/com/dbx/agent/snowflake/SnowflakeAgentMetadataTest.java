@@ -1,5 +1,6 @@
 package com.dbx.agent.snowflake;
 
+import com.dbx.agent.test.TestSupport;
 import com.dbx.agent.test.JdbcAgentFake;
 import com.dbx.agent.test.JdbcMetadataSqlFake;
 import org.junit.jupiter.api.Assertions;
@@ -9,7 +10,7 @@ class SnowflakeAgentMetadataTest {
     @Test
     void quotesSchemaAndTableIdentifiersInKeyMetadataSql() {
         SnowflakeAgent agent = new SnowflakeAgent();
-        JdbcAgentFake.setPrivateConnection(agent, JdbcMetadataSqlFake.connection());
+        TestSupport.setPrivateConnection(agent, JdbcMetadataSqlFake.connection());
 
         agent.getColumns("bad\"schema", "bad\"table");
         agent.listForeignKeys("bad\"schema", "bad\"table");

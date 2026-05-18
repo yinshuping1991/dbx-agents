@@ -1,5 +1,6 @@
 package com.dbx.agent.tdengine;
 
+import com.dbx.agent.test.TestSupport;
 import com.dbx.agent.ConnectParams;
 import com.dbx.agent.DatabaseAgent;
 import com.dbx.agent.ExecuteQueryOptions;
@@ -46,7 +47,7 @@ class TDengineAgentMetadataTest {
     @Test
     void usesTdengineMetadataStatements() {
         TDengineAgent agent = new TDengineAgent();
-        JdbcAgentFake.setPrivateConnection(agent, JdbcMetadataSqlFake.connection());
+        TestSupport.setPrivateConnection(agent, JdbcMetadataSqlFake.connection());
 
         agent.listDatabases();
         agent.listTables("power");
@@ -66,7 +67,7 @@ class TDengineAgentMetadataTest {
     @Test
     void setsDatabaseBeforeExecutionWhenSchemaIsProvided() {
         TDengineAgent agent = new TDengineAgent();
-        JdbcAgentFake.setPrivateConnection(agent, JdbcAgentFake.connection());
+        TestSupport.setPrivateConnection(agent, JdbcAgentFake.connection());
 
         agent.executeQuery("SELECT 1", "power", new ExecuteQueryOptions());
 

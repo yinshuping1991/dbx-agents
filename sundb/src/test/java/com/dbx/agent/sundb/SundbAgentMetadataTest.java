@@ -1,5 +1,6 @@
 package com.dbx.agent.sundb;
 
+import com.dbx.agent.test.TestSupport;
 import com.dbx.agent.test.JdbcAgentFake;
 import com.dbx.agent.test.JdbcMetadataSqlFake;
 import java.util.Collections;
@@ -10,7 +11,7 @@ class SundbAgentMetadataTest {
     @Test
     void quotesSchemaAndTableIdentifiersInIndexMetadataSql() {
         SundbAgent agent = new SundbAgent();
-        JdbcAgentFake.setPrivateConnection(agent, JdbcMetadataSqlFake.connection());
+        TestSupport.setPrivateConnection(agent, JdbcMetadataSqlFake.connection());
 
         agent.listIndexes("bad`schema", "bad`table");
 

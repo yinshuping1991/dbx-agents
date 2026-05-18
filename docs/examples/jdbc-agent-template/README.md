@@ -11,4 +11,10 @@ Recommended flow:
 5. Add the module to `settings.gradle`, `versions.json`, and the root README support table.
 6. Run `./gradlew :<agent>:test :<agent>:shadowJar`.
 
+To verify this template before copying it, run:
+
+```bash
+./gradlew -p docs/examples/jdbc-agent-template clean test shadowJar
+```
+
 See `docs/agent-authoring.md` for the full checklist.

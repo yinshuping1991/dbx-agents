@@ -1,5 +1,6 @@
 package com.dbx.agent.goldendb;
 
+import com.dbx.agent.test.TestSupport;
 import com.dbx.agent.test.JdbcAgentFake;
 import com.dbx.agent.test.JdbcMetadataSqlFake;
 import java.sql.Connection;
@@ -12,7 +13,7 @@ class GoldendbAgentMetadataTest {
     void quotesSchemaAndTableIdentifiersInIndexMetadataSql() {
         GoldendbAgent agent = new GoldendbAgent();
         Connection fake = JdbcMetadataSqlFake.connection();
-        JdbcAgentFake.setPrivateConnection(agent, fake);
+        TestSupport.setPrivateConnection(agent, fake);
 
         agent.listIndexes("bad`schema", "bad`table");
 
