@@ -20,7 +20,7 @@ tasks.shadowJar {
     archiveBaseName.set("dbx-agent-trino")
     archiveClassifier.set("")
     manifest {
-        attributes("Agent-Label" to "Trino (Presto)", "Main-Class" to "com.dbx.agent.trino.TrinoAgentKt")
+        attributes("Agent-Label" to "Trino (Presto)", "Main-Class" to "com.dbx.agent.trino.TrinoAgent")
     }
 }
 

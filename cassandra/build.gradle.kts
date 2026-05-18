@@ -20,7 +20,7 @@ tasks.shadowJar {
     archiveBaseName.set("dbx-agent-cassandra")
     archiveClassifier.set("")
     manifest {
-        attributes("Agent-Label" to "Apache Cassandra", "Main-Class" to "com.dbx.agent.cassandra.CassandraAgentKt")
+        attributes("Agent-Label" to "Apache Cassandra", "Main-Class" to "com.dbx.agent.cassandra.CassandraAgent")
     }
 }
 
