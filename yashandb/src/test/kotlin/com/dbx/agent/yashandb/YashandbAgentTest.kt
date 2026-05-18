@@ -20,6 +20,6 @@ class YashandbAgentTest : JdbcFakeExecutionBehaviorTest() {
         assertEquals("com.yashandb.jdbc.Driver", profile.driverClass)
         assertEquals("jdbc:yasdb://{host}:{port}/{database}", profile.urlTemplate)
         assertTrue(profile.skipExecutionContext)
-        assertEquals(setOf("SYS", "MDSYS", "XA_SYS"), profile.excludedSchemas)
+        assertEquals(emptySet(), profile.excludedSchemas)
     }
 }

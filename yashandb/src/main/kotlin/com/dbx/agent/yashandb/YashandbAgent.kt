@@ -11,7 +11,6 @@ val YASHANDB_PROFILE = JdbcAgentProfile(
     urlTemplate = "jdbc:yasdb://{host}:{port}/{database}",
     defaultPort = 1688,
     skipExecutionContext = true,
-    excludedSchemas = setOf("SYS", "MDSYS", "XA_SYS"),
 )
 
 fun main() {
