@@ -22,11 +22,20 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CommonJavaCompatibilityTest {
     @Test
+    void definesSharedAgentProtocolContract() {
+        assertEquals("handshake", AgentProtocol.METHOD_HANDSHAKE);
+        assertEquals(1, AgentProtocol.PROTOCOL_VERSION);
+        assertTrue(AgentProtocol.CAPABILITIES.contains(AgentProtocol.CAPABILITY_CONNECT));
+        assertTrue(AgentProtocol.CAPABILITIES.contains(AgentProtocol.CAPABILITY_QUERY));
+        assertTrue(AgentProtocol.CAPABILITIES.contains(AgentProtocol.CAPABILITY_METADATA));
+    }
+
+    @Test
     void jsonRpcServerExposesProtocolHandshake() {
         JsonRpcServer server = new JsonRpcServer(new MinimalAgent());
 
         String response = server.handleRequest(
-            "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"handshake\",\"params\":{\"appVersion\":\"0.5.13\",\"supportedProtocolVersions\":[1]}}"
+            "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"" + AgentProtocol.METHOD_HANDSHAKE + "\",\"params\":{\"appVersion\":\"0.5.13\",\"supportedProtocolVersions\":[1]}}"
         );
 
         JsonObject json = JsonParser.parseString(response).getAsJsonObject();

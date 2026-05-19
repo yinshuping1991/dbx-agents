@@ -1,5 +1,6 @@
 package com.dbx.agent.mongodb;
 
+import com.dbx.agent.AgentProtocol;
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
@@ -229,6 +230,7 @@ public final class MongoAgent {
 
     private static Object dispatch(String method, JsonObject params) {
         return switch (method) {
+            case AgentProtocol.METHOD_HANDSHAKE -> AgentProtocol.handshakeResult();
             case "connect" -> connect(params);
             case "list_databases" -> listDatabases();
             case "list_collections" -> listCollections(params);
@@ -265,6 +267,31 @@ public final class MongoAgent {
         return value == null ? fallback : value;
     }
 
+    static String handleRequest(String line) {
+        JsonObject req = JsonParser.parseString(line).getAsJsonObject();
+        JsonElement id = req.get("id");
+        String method = req.get("method").getAsString();
+        JsonObject params = req.has("params") && req.get("params").isJsonObject()
+            ? req.getAsJsonObject("params")
+            : new JsonObject();
+
+        JsonObject response = new JsonObject();
+        response.addProperty("jsonrpc", "2.0");
+        response.add("id", id);
+
+        try {
+            Object result = dispatch(method, params);
+            response.add("result", GSON.toJsonTree(result));
+        } catch (Exception e) {
+            JsonObject error = new JsonObject();
+            error.addProperty("code", -1);
+            error.addProperty("message", e.getMessage() == null ? "Unknown error" : e.getMessage());
+            response.add("error", error);
+        }
+
+        return GSON.toJson(response);
+    }
+
     public static void main(String[] args) throws Exception {
         System.out.println("{\"ready\":true}");
         System.out.flush();
@@ -275,28 +302,8 @@ public final class MongoAgent {
             if (line == null) {
                 break;
             }
-            JsonObject req = JsonParser.parseString(line).getAsJsonObject();
-            JsonElement id = req.get("id");
-            String method = req.get("method").getAsString();
-            JsonObject params = req.has("params") && req.get("params").isJsonObject()
-                ? req.getAsJsonObject("params")
-                : new JsonObject();
 
-            JsonObject response = new JsonObject();
-            response.addProperty("jsonrpc", "2.0");
-            response.add("id", id);
-
-            try {
-                Object result = dispatch(method, params);
-                response.add("result", GSON.toJsonTree(result));
-            } catch (Exception e) {
-                JsonObject error = new JsonObject();
-                error.addProperty("code", -1);
-                error.addProperty("message", e.getMessage() == null ? "Unknown error" : e.getMessage());
-                response.add("error", error);
-            }
-
-            System.out.println(GSON.toJson(response));
+            System.out.println(handleRequest(line));
             System.out.flush();
         }
     }
