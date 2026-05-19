@@ -68,55 +68,55 @@ public final class JsonRpcServer {
         if (AgentProtocol.METHOD_HANDSHAKE.equals(method)) {
             return AgentProtocol.handshakeResult();
         }
-        if ("connect".equals(method)) {
+        if (AgentProtocol.METHOD_CONNECT.equals(method)) {
             agent.connect(gson.fromJson(params, ConnectParams.class));
             return Collections.singletonMap("ok", true);
         }
-        if ("test_connection".equals(method)) {
+        if (AgentProtocol.METHOD_TEST_CONNECTION.equals(method)) {
             if (!agent.testConnection(gson.fromJson(params, ConnectParams.class))) {
                 throw new RuntimeException("Connection failed");
             }
             return Collections.singletonMap("ok", true);
         }
-        if ("list_databases".equals(method)) {
+        if (AgentProtocol.METHOD_LIST_DATABASES.equals(method)) {
             return agent.listDatabases();
         }
-        if ("list_schemas".equals(method)) {
+        if (AgentProtocol.METHOD_LIST_SCHEMAS.equals(method)) {
             String database = stringOrNull(params, "database");
             if (database != null && !database.trim().isEmpty() && agent.getConnection() != null) {
                 agent.getConnection().setCatalog(database);
             }
             return agent.listSchemas();
         }
-        if ("list_tables".equals(method)) {
+        if (AgentProtocol.METHOD_LIST_TABLES.equals(method)) {
             return agent.listTables(params.get("schema").getAsString());
         }
-        if ("list_objects".equals(method)) {
+        if (AgentProtocol.METHOD_LIST_OBJECTS.equals(method)) {
             return agent.listObjects(params.get("schema").getAsString());
         }
-        if ("get_object_source".equals(method)) {
+        if (AgentProtocol.METHOD_GET_OBJECT_SOURCE.equals(method)) {
             return agent.getObjectSource(
                 params.get("schema").getAsString(),
                 params.get("name").getAsString(),
                 params.get("object_type").getAsString()
             );
         }
-        if ("get_table_ddl".equals(method)) {
+        if (AgentProtocol.METHOD_GET_TABLE_DDL.equals(method)) {
             return agent.getTableDdl(params.get("schema").getAsString(), params.get("table").getAsString());
         }
-        if ("get_columns".equals(method)) {
+        if (AgentProtocol.METHOD_GET_COLUMNS.equals(method)) {
             return agent.getColumns(params.get("schema").getAsString(), params.get("table").getAsString());
         }
-        if ("list_indexes".equals(method)) {
+        if (AgentProtocol.METHOD_LIST_INDEXES.equals(method)) {
             return agent.listIndexes(params.get("schema").getAsString(), params.get("table").getAsString());
         }
-        if ("list_foreign_keys".equals(method)) {
+        if (AgentProtocol.METHOD_LIST_FOREIGN_KEYS.equals(method)) {
             return agent.listForeignKeys(params.get("schema").getAsString(), params.get("table").getAsString());
         }
-        if ("list_triggers".equals(method)) {
+        if (AgentProtocol.METHOD_LIST_TRIGGERS.equals(method)) {
             return agent.listTriggers(params.get("schema").getAsString(), params.get("table").getAsString());
         }
-        if ("execute_query".equals(method)) {
+        if (AgentProtocol.METHOD_EXECUTE_QUERY.equals(method)) {
             return agent.executeQuery(
                 params.get("sql").getAsString(),
                 stringOrNull(params, "schema"),
@@ -126,7 +126,7 @@ public final class JsonRpcServer {
                 )
             );
         }
-        if ("execute_query_page".equals(method)) {
+        if (AgentProtocol.METHOD_EXECUTE_QUERY_PAGE.equals(method)) {
             return agent.executeQueryPage(
                 params.get("sql").getAsString(),
                 stringOrNull(params, "schema"),
@@ -137,26 +137,26 @@ public final class JsonRpcServer {
                 )
             );
         }
-        if ("fetch_query_page".equals(method)) {
+        if (AgentProtocol.METHOD_FETCH_QUERY_PAGE.equals(method)) {
             return agent.fetchQueryPage(
                 params.get("sessionId").getAsString(),
                 intOrDefault(params, "pageSize", 100)
             );
         }
-        if ("close_query_session".equals(method)) {
+        if (AgentProtocol.METHOD_CLOSE_QUERY_SESSION.equals(method)) {
             return agent.closeQuerySession(params.get("sessionId").getAsString());
         }
-        if ("execute_transaction".equals(method)) {
+        if (AgentProtocol.METHOD_EXECUTE_TRANSACTION.equals(method)) {
             Type statementsType = new TypeToken<List<String>>() {}.getType();
             List<String> statements = gson.fromJson(params.get("statements"), statementsType);
             return agent.executeTransaction(statements, stringOrNull(params, "schema"));
         }
-        if ("disconnect".equals(method)) {
+        if (AgentProtocol.METHOD_DISCONNECT.equals(method)) {
             JdbcExecutor.INSTANCE.closeAllQuerySessions();
             agent.disconnect();
             return Collections.singletonMap("ok", true);
         }
-        if ("shutdown".equals(method)) {
+        if (AgentProtocol.METHOD_SHUTDOWN.equals(method)) {
             JdbcExecutor.INSTANCE.closeAllQuerySessions();
             agent.disconnect();
             System.exit(0);

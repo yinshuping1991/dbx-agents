@@ -6,9 +6,12 @@ import com.google.gson.JsonParser;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
+import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.lang.reflect.InvocationHandler;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -28,6 +31,21 @@ class CommonJavaCompatibilityTest {
         assertTrue(AgentProtocol.CAPABILITIES.contains(AgentProtocol.CAPABILITY_CONNECT));
         assertTrue(AgentProtocol.CAPABILITIES.contains(AgentProtocol.CAPABILITY_QUERY));
         assertTrue(AgentProtocol.CAPABILITIES.contains(AgentProtocol.CAPABILITY_METADATA));
+    }
+
+    @Test
+    void agentProtocolMatchesContractResource() {
+        JsonObject contract = protocolContract();
+
+        assertEquals(AgentProtocol.PROTOCOL_VERSION, contract.get("protocolVersion").getAsInt());
+        assertEquals(AgentProtocol.METHOD_HANDSHAKE, contract.get("handshakeMethod").getAsString());
+        assertEquals(
+            Arrays.asList("protocolVersion", "agentProtocolVersion", "capabilities"),
+            strings(contract.getAsJsonArray("handshakeResponseFields"))
+        );
+        assertEquals(AgentProtocol.CAPABILITIES, strings(contract.getAsJsonArray("capabilities")));
+        assertEquals(AgentProtocol.COMMON_METHODS, strings(contract.getAsJsonArray("commonMethods")));
+        assertEquals(AgentProtocol.MONGO_LEGACY_METHODS, strings(contract.getAsJsonArray("mongoLegacyMethods")));
     }
 
     @Test
@@ -292,6 +310,22 @@ class CommonJavaCompatibilityTest {
             }
         }
         return false;
+    }
+
+    private static JsonObject protocolContract() {
+        InputStream stream = CommonJavaCompatibilityTest.class.getResourceAsStream("/agent-protocol-v1.json");
+        if (stream == null) {
+            throw new AssertionError("agent-protocol-v1.json resource missing");
+        }
+        return JsonParser.parseReader(new InputStreamReader(stream, StandardCharsets.UTF_8)).getAsJsonObject();
+    }
+
+    private static List<String> strings(JsonArray array) {
+        List<String> result = new ArrayList<>();
+        for (int i = 0; i < array.size(); i++) {
+            result.add(array.get(i).getAsString());
+        }
+        return result;
     }
 
     private interface MethodHandler {

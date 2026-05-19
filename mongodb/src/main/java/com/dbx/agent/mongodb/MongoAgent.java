@@ -231,19 +231,19 @@ public final class MongoAgent {
     private static Object dispatch(String method, JsonObject params) {
         return switch (method) {
             case AgentProtocol.METHOD_HANDSHAKE -> AgentProtocol.handshakeResult();
-            case "connect" -> connect(params);
-            case "list_databases" -> listDatabases();
-            case "list_collections" -> listCollections(params);
-            case "find_documents" -> findDocuments(params);
-            case "insert_document" -> insertDocument(params);
-            case "update_document" -> updateDocument(params);
-            case "delete_document" -> deleteDocument(params);
-            case "disconnect", "shutdown" -> {
+            case AgentProtocol.METHOD_CONNECT -> connect(params);
+            case AgentProtocol.MONGO_METHOD_LIST_DATABASES -> listDatabases();
+            case AgentProtocol.MONGO_METHOD_LIST_COLLECTIONS -> listCollections(params);
+            case AgentProtocol.MONGO_METHOD_FIND_DOCUMENTS -> findDocuments(params);
+            case AgentProtocol.MONGO_METHOD_INSERT_DOCUMENT -> insertDocument(params);
+            case AgentProtocol.MONGO_METHOD_UPDATE_DOCUMENT -> updateDocument(params);
+            case AgentProtocol.MONGO_METHOD_DELETE_DOCUMENT -> deleteDocument(params);
+            case AgentProtocol.METHOD_DISCONNECT, AgentProtocol.METHOD_SHUTDOWN -> {
                 if (client != null) {
                     client.close();
                     client = null;
                 }
-                if ("shutdown".equals(method)) {
+                if (AgentProtocol.METHOD_SHUTDOWN.equals(method)) {
                     System.exit(0);
                 }
                 yield Collections.singletonMap("ok", true);
