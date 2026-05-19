@@ -10,10 +10,22 @@ import com.google.gson.reflect.TypeToken;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.lang.reflect.Type;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
 public final class JsonRpcServer {
+    private static final int PROTOCOL_VERSION = 1;
+    private static final List<String> CAPABILITIES = Collections.unmodifiableList(Arrays.asList(
+        "connect",
+        "test_connection",
+        "metadata",
+        "query",
+        "paged_query",
+        "transaction",
+        "ddl"
+    ));
+
     private final DatabaseAgent agent;
     private final Gson gson = new Gson();
 
@@ -41,7 +53,7 @@ public final class JsonRpcServer {
         }
     }
 
-    private String handleRequest(String line) {
+    String handleRequest(String line) {
         JsonObject req = JsonParser.parseString(line).getAsJsonObject();
         JsonElement id = req.get("id");
         String method = req.get("method").getAsString();
@@ -65,6 +77,9 @@ public final class JsonRpcServer {
     }
 
     private Object dispatch(String method, JsonObject params) throws Exception {
+        if ("handshake".equals(method)) {
+            return new HandshakeResult(PROTOCOL_VERSION, PROTOCOL_VERSION, CAPABILITIES);
+        }
         if ("connect".equals(method)) {
             agent.connect(gson.fromJson(params, ConnectParams.class));
             return Collections.singletonMap("ok", true);
@@ -189,5 +204,17 @@ public final class JsonRpcServer {
     private static int intOrDefault(JsonObject object, String key, int defaultValue) {
         Integer value = intOrNull(object, key);
         return value == null ? defaultValue : value;
+    }
+
+    private static final class HandshakeResult {
+        private final int protocolVersion;
+        private final int agentProtocolVersion;
+        private final List<String> capabilities;
+
+        private HandshakeResult(int protocolVersion, int agentProtocolVersion, List<String> capabilities) {
+            this.protocolVersion = protocolVersion;
+            this.agentProtocolVersion = agentProtocolVersion;
+            this.capabilities = capabilities;
+        }
     }
 }

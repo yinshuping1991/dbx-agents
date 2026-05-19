@@ -1,5 +1,8 @@
 package com.dbx.agent;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import org.junit.jupiter.api.Test;
 
 import java.sql.Connection;
@@ -15,8 +18,28 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class CommonJavaCompatibilityTest {
+    @Test
+    void jsonRpcServerExposesProtocolHandshake() {
+        JsonRpcServer server = new JsonRpcServer(new MinimalAgent());
+
+        String response = server.handleRequest(
+            "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"handshake\",\"params\":{\"appVersion\":\"0.5.13\",\"supportedProtocolVersions\":[1]}}"
+        );
+
+        JsonObject json = JsonParser.parseString(response).getAsJsonObject();
+        JsonObject result = json.getAsJsonObject("result");
+        assertEquals("2.0", json.get("jsonrpc").getAsString());
+        assertEquals(7, json.get("id").getAsInt());
+        assertEquals(1, result.get("protocolVersion").getAsInt());
+        assertEquals(1, result.get("agentProtocolVersion").getAsInt());
+        assertTrue(containsCapability(result.getAsJsonArray("capabilities"), "connect"));
+        assertTrue(containsCapability(result.getAsJsonArray("capabilities"), "query"));
+        assertTrue(containsCapability(result.getAsJsonArray("capabilities"), "metadata"));
+    }
+
     @Test
     void exposesJavaFriendlyDefaultsAndModels() {
         ConnectParams params = new ConnectParams("localhost", 5432, "demo", "user", "secret", "ssl=false", "");
@@ -251,6 +274,15 @@ class CommonJavaCompatibilityTest {
             return 0L;
         }
         return null;
+    }
+
+    private static boolean containsCapability(JsonArray capabilities, String expected) {
+        for (int i = 0; i < capabilities.size(); i++) {
+            if (expected.equals(capabilities.get(i).getAsString())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private interface MethodHandler {
