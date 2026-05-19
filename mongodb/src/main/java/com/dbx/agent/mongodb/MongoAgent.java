@@ -13,6 +13,8 @@ import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -47,6 +49,7 @@ public final class MongoAgent {
         String username = coalesce(stringOrNull(connObj, "username"));
         String password = coalesce(stringOrNull(connObj, "password"));
         String database = defaultString(stringOrNull(connObj, "database"), "admin");
+        String authDatabase = authenticationDatabase(connObj);
         String connectionString = stringOrNull(connObj, "connection_string");
 
         MongoClientSettings.Builder builder = MongoClientSettings.builder();
@@ -55,7 +58,7 @@ public final class MongoAgent {
         } else {
             builder.applyToClusterSettings(settings -> settings.hosts(Collections.singletonList(new ServerAddress(host, port))));
             if (!username.isBlank()) {
-                builder.credential(MongoCredential.createCredential(username, database, password.toCharArray()));
+                builder.credential(MongoCredential.createCredential(username, authDatabase, password.toCharArray()));
             }
         }
 
@@ -65,6 +68,33 @@ public final class MongoAgent {
         client = MongoClients.create(builder.build());
         client.getDatabase(database).runCommand(new Document("ping", 1));
         return Collections.singletonMap("ok", true);
+    }
+
+    static String authenticationDatabase(JsonObject connObj) {
+        String authSource = urlParam(stringOrNull(connObj, "url_params"), "authSource");
+        if (authSource != null && !authSource.isBlank()) {
+            return authSource;
+        }
+        return defaultString(stringOrNull(connObj, "database"), "admin");
+    }
+
+    private static String urlParam(String urlParams, String key) {
+        if (urlParams == null || urlParams.isBlank()) {
+            return null;
+        }
+        String normalized = urlParams.startsWith("?") ? urlParams.substring(1) : urlParams;
+        for (String pair : normalized.split("&")) {
+            if (pair.isBlank()) continue;
+            String[] parts = pair.split("=", 2);
+            if (decode(parts[0]).equals(key)) {
+                return parts.length > 1 ? decode(parts[1]) : "";
+            }
+        }
+        return null;
+    }
+
+    private static String decode(String value) {
+        return URLDecoder.decode(value, StandardCharsets.UTF_8);
     }
 
     private static Object listDatabases() {
