@@ -55,10 +55,10 @@ public final class JsonRpcServer {
             Object result = dispatch(method, params);
             response.add("result", gson.toJsonTree(result));
             return gson.toJson(response);
-        } catch (Exception e) {
+        } catch (Throwable e) {
             JsonObject error = new JsonObject();
             error.addProperty("code", -1);
-            error.addProperty("message", e.getMessage() == null ? "Unknown error" : e.getMessage());
+            error.addProperty("message", e.getMessage() == null ? e.toString() : e.getMessage());
             response.add("error", error);
             return gson.toJson(response);
         }

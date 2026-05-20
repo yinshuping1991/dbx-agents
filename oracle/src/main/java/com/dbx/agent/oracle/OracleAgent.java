@@ -12,6 +12,8 @@ import com.dbx.agent.JdbcIdentifiers;
 import com.dbx.agent.JsonRpcServer;
 import com.dbx.agent.ObjectInfo;
 import com.dbx.agent.ObjectSource;
+import com.dbx.agent.QueryPageOptions;
+import com.dbx.agent.QueryPageResult;
 import com.dbx.agent.QueryResult;
 import com.dbx.agent.TableInfo;
 import com.dbx.agent.TriggerInfo;
@@ -431,6 +433,18 @@ public final class OracleAgent extends BaseDatabaseAgent {
     }
 
     @Override
+    public QueryPageResult executeQueryPage(String sql, String schema, QueryPageOptions options) {
+        return JdbcExecutor.INSTANCE.executePage(
+            requireConnected(),
+            rewriteFetchFirst(trimEndSemicolons(sql.trim())),
+            schema,
+            this::setSchemaSQL,
+            options,
+            OracleAgent::stringResultValue
+        );
+    }
+
+    @Override
     public void disconnect() {
         uncheckedVoid(() -> {
             if (connection != null) {
@@ -476,8 +490,8 @@ public final class OracleAgent extends BaseDatabaseAgent {
 
     private static Object stringResultValue(ResultSet rs, int index, int sqlType) {
         try {
-            Object value = rs.getObject(index);
-            return rs.wasNull() ? null : value.toString();
+            String value = rs.getString(index);
+            return rs.wasNull() ? null : value;
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
