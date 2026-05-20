@@ -12,6 +12,8 @@ import com.dbx.agent.JdbcIdentifiers;
 import com.dbx.agent.JsonRpcServer;
 import com.dbx.agent.ObjectInfo;
 import com.dbx.agent.ObjectSource;
+import com.dbx.agent.QueryPageOptions;
+import com.dbx.agent.QueryPageResult;
 import com.dbx.agent.QueryResult;
 import com.dbx.agent.TableInfo;
 import com.dbx.agent.TriggerInfo;
@@ -338,6 +340,18 @@ public final class DamengAgent extends BaseDatabaseAgent {
             this::setSchemaSQL,
             options.getMaxRows(),
             options.getFetchSize(),
+            this::stringResultValue
+        );
+    }
+
+    @Override
+    public QueryPageResult executeQueryPage(String sql, String schema, QueryPageOptions options) {
+        return JdbcExecutor.INSTANCE.executePage(
+            requireConnected(),
+            sql,
+            schema,
+            this::setSchemaSQL,
+            options,
             this::stringResultValue
         );
     }
