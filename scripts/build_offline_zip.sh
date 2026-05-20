@@ -5,7 +5,7 @@ set -euo pipefail
 # Usage: ./scripts/build_offline_zip.sh <release-dir>
 # The release-dir must contain agent-registry.json, dbx-agent-*.jar, and dbx-jre-*.tar.gz
 
-RELEASE_DIR="${1:?Usage: build_offline_zip.sh <release-dir>}"
+RELEASE_DIR="$(cd "${1:?Usage: build_offline_zip.sh <release-dir>}" && pwd)"
 
 if [ ! -f "$RELEASE_DIR/agent-registry.json" ]; then
   echo "ERROR: agent-registry.json not found in $RELEASE_DIR"
