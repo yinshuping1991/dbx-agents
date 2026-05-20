@@ -48,6 +48,46 @@ class InformixAgentTest {
     }
 
     @Test
+    void fallsBackToInformixServerNameWhenHostIsAnIpAddress() {
+        String url = InformixAgent.buildJdbcUrl(
+            new ConnectParams(
+                "172.26.128.159",
+                20013,
+                "sysmaster",
+                "",
+                "",
+                "",
+                ""
+            )
+        );
+
+        Assertions.assertEquals(
+            "jdbc:informix-sqli://172.26.128.159:20013/sysmaster:INFORMIXSERVER=informix",
+            url
+        );
+    }
+
+    @Test
+    void usesSysmasterWhenDatabaseIsBlank() {
+        String url = InformixAgent.buildJdbcUrl(
+            new ConnectParams(
+                "informix-host",
+                9088,
+                "",
+                "",
+                "",
+                "INFORMIXSERVER=informix",
+                ""
+            )
+        );
+
+        Assertions.assertEquals(
+            "jdbc:informix-sqli://informix-host:9088/sysmaster:INFORMIXSERVER=informix",
+            url
+        );
+    }
+
+    @Test
     void extractsPrimaryKeyColumnNumbersFromInformixIndexParts() {
         Assertions.assertEquals(
             Set.of(1, 3, 5),

@@ -35,7 +35,8 @@ public final class InformixAgent extends BaseDatabaseAgent {
 
     public static String buildJdbcUrl(ConnectParams params) {
         String extraParams = trimEnd(trimStart(params.getUrl_params().trim(), ':', ';'), ';');
-        String serverParam = containsIgnoreCase(extraParams, "INFORMIXSERVER=") ? "" : "INFORMIXSERVER=" + params.getHost();
+        String database = params.getDatabase().trim().isEmpty() ? "sysmaster" : params.getDatabase().trim();
+        String serverParam = containsIgnoreCase(extraParams, "INFORMIXSERVER=") ? "" : "INFORMIXSERVER=" + defaultInformixServer(params.getHost());
         List<String> jdbcParams = new ArrayList<>();
         if (!serverParam.isBlank()) {
             jdbcParams.add(serverParam);
@@ -43,8 +44,16 @@ public final class InformixAgent extends BaseDatabaseAgent {
         if (!extraParams.isBlank()) {
             jdbcParams.add(extraParams);
         }
-        return "jdbc:informix-sqli://" + params.getHost() + ":" + params.getPort() + "/" + params.getDatabase() + ":"
+        return "jdbc:informix-sqli://" + params.getHost() + ":" + params.getPort() + "/" + database + ":"
             + String.join(";", jdbcParams);
+    }
+
+    private static String defaultInformixServer(String host) {
+        return isIpAddress(host) ? "informix" : host;
+    }
+
+    private static boolean isIpAddress(String host) {
+        return host.matches("\\d{1,3}(\\.\\d{1,3}){3}") || host.contains(":");
     }
 
     /**
