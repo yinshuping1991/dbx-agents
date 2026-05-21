@@ -390,7 +390,9 @@ public final class DamengAgent extends BaseDatabaseAgent {
     }
 
     private static String buildUrl(ConnectParams params) {
-        return "jdbc:dm://" + params.getHost() + ":" + params.getPort() + "/" + params.getDatabase();
+        String database = params.getDatabase() == null ? "" : params.getDatabase().trim();
+        String suffix = database.isEmpty() ? "" : "/" + database;
+        return "jdbc:dm://" + params.getHost() + ":" + params.getPort() + suffix;
     }
 
     private static String formatDataType(String base, Integer numPrec, Integer numScale, Integer dataLen, Integer charLen) {
