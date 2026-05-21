@@ -11,6 +11,8 @@ import com.dbx.agent.JdbcExecutor;
 import com.dbx.agent.JsonRpcServer;
 import com.dbx.agent.ObjectInfo;
 import com.dbx.agent.ObjectSource;
+import com.dbx.agent.QueryPageOptions;
+import com.dbx.agent.QueryPageResult;
 import com.dbx.agent.QueryResult;
 import com.dbx.agent.TableInfo;
 import com.dbx.agent.TriggerInfo;
@@ -170,6 +172,18 @@ public final class TDengineAgent extends BaseDatabaseAgent {
             this::setSchemaSQL,
             options.getMaxRows(),
             options.getFetchSize(),
+            this::tdengineResultValue
+        );
+    }
+
+    @Override
+    public QueryPageResult executeQueryPage(String sql, String schema, QueryPageOptions options) {
+        return JdbcExecutor.INSTANCE.executePage(
+            requireConnected(),
+            sql,
+            schema,
+            this::setSchemaSQL,
+            options,
             this::tdengineResultValue
         );
     }
