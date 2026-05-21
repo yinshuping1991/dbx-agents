@@ -9,6 +9,8 @@ INFRA_MODULES = {"common", "test-support"}
 SOURCE_GLOBS = ("*/src/main/**/*.java",)
 KOTLIN_FILE_SUFFIXES = (".kt", ".kts")
 KOTLIN_SCAN_EXCLUDED_PARTS = {".git", ".gradle", "build"}
+DEFAULT_AGENT_JRE_KEY = "21"
+LEGACY_ORACLE_JRE_KEY = "8"
 
 FORBIDDEN_PATTERNS = [
     (re.compile(r"private\s+val\s+QUERY_PREFIXES"), "forbidden local SQL prefix classifier"),
@@ -99,6 +101,48 @@ def validate_manifest_fields(root: Path, modules: set[str]) -> list[str]:
     return problems
 
 
+def validate_release_runtime_keys(root: Path) -> list[str]:
+    workflow = root / ".github/workflows/release.yml"
+    if not workflow.exists():
+        return []
+    text = workflow.read_text(encoding="utf-8")
+    problems: list[str] = []
+    required_patterns = [
+        (
+            rf'jre-key:\s*"{DEFAULT_AGENT_JRE_KEY}"',
+            f"release workflow must build the default JRE with key {DEFAULT_AGENT_JRE_KEY}",
+        ),
+        (
+            rf'java-version:\s*"{DEFAULT_AGENT_JRE_KEY}"',
+            f"release workflow must build the default JRE from Java {DEFAULT_AGENT_JRE_KEY}",
+        ),
+        (
+            rf'oracle-10g\)\s*echo\s*"{LEGACY_ORACLE_JRE_KEY}"',
+            f"oracle-10g must keep JRE key {LEGACY_ORACLE_JRE_KEY}",
+        ),
+        (
+            rf'\*\)\s*echo\s*"{DEFAULT_AGENT_JRE_KEY}"',
+            f"non-legacy agents must use JRE key {DEFAULT_AGENT_JRE_KEY}",
+        ),
+        (
+            rf'"{DEFAULT_AGENT_JRE_KEY}":\s*\{{\s*"version":\s*"{DEFAULT_AGENT_JRE_KEY}\.',
+            f"registry must publish Java {DEFAULT_AGENT_JRE_KEY} under JRE key {DEFAULT_AGENT_JRE_KEY}",
+        ),
+    ]
+    for pattern, message in required_patterns:
+        if not re.search(pattern, text, flags=re.S):
+            problems.append(message)
+    forbidden_patterns = [
+        (r'jre-key:\s*"17"', "release workflow must not build Java 21 under JRE key 17"),
+        (r'\*\)\s*echo\s*"17"', "non-legacy agents must not use JRE key 17"),
+        (r'"17":\s*\{\s*"version":\s*"21\.', "registry must not publish Java 21 under JRE key 17"),
+    ]
+    for pattern, message in forbidden_patterns:
+        if re.search(pattern, text, flags=re.S):
+            problems.append(message)
+    return problems
+
+
 def manifest_attributes(build_text: str) -> dict[str, str]:
     attrs: dict[str, str] = {}
     for key, value in re.findall(
@@ -115,6 +159,7 @@ def validate(root: Path) -> list[str]:
         validate_versions(root)
         + validate_source_patterns(root)
         + validate_manifest_fields(root, modules)
+        + validate_release_runtime_keys(root)
         + validate_no_kotlin_residue(root)
     )
 

@@ -191,7 +191,7 @@ subprojects {
 }
 ```
 
-Only use JRE 8 for drivers that require it, such as legacy Oracle 10g support. If an agent needs a special runtime, update the root Gradle convention, the release workflow JRE detection logic, and document the reason in the module.
+Most agents use JRE 21. Only use JRE 8 for drivers that require it, such as legacy Oracle 10g support. If an agent needs a special runtime, update the root Gradle convention, the release workflow JRE detection logic, and document the reason in the module.
 
 ## Tests
 

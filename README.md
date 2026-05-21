@@ -41,7 +41,7 @@ Each agent runs as a standalone JVM process and communicates with DBX via stdin/
 
 ## Multi-JRE Support
 
-Most agents target JRE 17. Agents that require legacy Java runtimes (e.g. `oracle-10g` uses JRE 8) declare their JRE version in the registry. DBX downloads and manages multiple JRE installations automatically.
+Most agents target JRE 21. Agents that require legacy Java runtimes (e.g. `oracle-10g` uses JRE 8) declare their JRE version in the registry. DBX downloads and manages multiple JRE installations automatically.
 
 ## Build
 

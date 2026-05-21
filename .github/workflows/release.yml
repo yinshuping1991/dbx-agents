@@ -101,7 +101,7 @@ jobs:
     strategy:
       matrix:
         include:
-          - jre-key: "17"
+          - jre-key: "21"
             java-version: "21"
             modules: "java.base,java.sql,java.sql.rowset,java.naming,java.management,java.desktop,java.security.jgss,java.security.sasl,jdk.charsets"
     steps:
@@ -273,11 +273,11 @@ jobs:
             local name="$1"
             case "$name" in
               oracle-10g) echo "8" ;;
-              *) echo "17" ;;
+              *) echo "21" ;;
             esac
           }
 
-          JRE17_PLATFORMS=$(generate_jre_platforms "17")
+          JRE21_PLATFORMS=$(generate_jre_platforms "21")
           JRE8_PLATFORMS=$(generate_jre_platforms "8")
 
           DRIVERS=""
@@ -296,10 +296,10 @@ jobs:
           cat > release/agent-registry.json <<EOF
           {
             "jres": {
-              "17": {
+              "21": {
                 "version": "21.0.11",
                 "platforms": {
-          ${JRE17_PLATFORMS}
+          ${JRE21_PLATFORMS}
                 }
               },
               "8": {

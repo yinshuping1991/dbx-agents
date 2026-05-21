@@ -163,6 +163,81 @@ class ValidateAgentsTest(unittest.TestCase):
                 problems,
             )
 
+    def test_release_runtime_keys_match_java_21_default_and_oracle_8_exception(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            workflow = root / ".github/workflows/release.yml"
+            workflow.parent.mkdir(parents=True)
+            workflow.write_text(
+                textwrap.dedent(
+                    '''
+                    strategy:
+                      matrix:
+                        include:
+                          - jre-key: "21"
+                            java-version: "21"
+                    detect_jre_key() {
+                      case "$name" in
+                        oracle-10g) echo "8" ;;
+                        *) echo "21" ;;
+                      esac
+                    }
+                    cat > release/agent-registry.json <<EOF
+                    {
+                      "jres": {
+                        "21": {
+                          "version": "21.0.11"
+                        }
+                      }
+                    }
+                    EOF
+                    '''
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertEqual([], validate_agents.validate_release_runtime_keys(root))
+
+            workflow.write_text(
+                textwrap.dedent(
+                    '''
+                    strategy:
+                      matrix:
+                        include:
+                          - jre-key: "17"
+                            java-version: "21"
+                    detect_jre_key() {
+                      case "$name" in
+                        oracle-10g) echo "8" ;;
+                        *) echo "17" ;;
+                      esac
+                    }
+                    cat > release/agent-registry.json <<EOF
+                    {
+                      "jres": {
+                        "17": {
+                          "version": "21.0.11"
+                        }
+                      }
+                    }
+                    EOF
+                    '''
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                [
+                    "release workflow must build the default JRE with key 21",
+                    "non-legacy agents must use JRE key 21",
+                    "registry must publish Java 21 under JRE key 21",
+                    "release workflow must not build Java 21 under JRE key 17",
+                    "non-legacy agents must not use JRE key 17",
+                    "registry must not publish Java 21 under JRE key 17",
+                ],
+                validate_agents.validate_release_runtime_keys(root),
+            )
+
     def test_agent_jar_validation_requires_main_class_entry(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

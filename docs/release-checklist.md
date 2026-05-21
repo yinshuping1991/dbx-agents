@@ -113,7 +113,7 @@ Current external-driver agents include BigQuery and SunDB.
 
 ## 6. JRE Selection
 
-Most agents are built for the default JRE key `17`, backed by JDK 21 in the release workflow.
+Most agents are built for the default JRE key `21`, backed by JDK 21 in the release workflow.
 
 Special case:
 
@@ -184,7 +184,7 @@ After the GitHub release finishes:
 - Confirm every expected agent appears under `drivers`.
 - Confirm labels preserve spaces, for example `Google BigQuery`.
 - Confirm `oracle-10g` uses JRE key `8`.
-- Confirm other agents use JRE key `17`.
+- Confirm other agents use JRE key `21`.
 - Confirm `external_driver_required` is correct.
 - Confirm every jar URL, sha256, and size is present.
 - Spot-check at least one agent jar manifest:
