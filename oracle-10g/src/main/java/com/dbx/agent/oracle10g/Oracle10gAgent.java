@@ -406,7 +406,11 @@ public final class Oracle10gAgent extends BaseDatabaseAgent {
         });
     }
 
-    private static String buildUrl(ConnectParams params) {
+    static String buildUrl(ConnectParams params) {
+        String connectionString = params.getConnection_string();
+        if (connectionString != null && !connectionString.trim().isEmpty()) {
+            return connectionString;
+        }
         return "jdbc:oracle:thin:@" + params.getHost() + ":" + params.getPort() + "/" + serviceName(params);
     }
 

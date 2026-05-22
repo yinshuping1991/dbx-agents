@@ -2,6 +2,7 @@ package com.dbx.agent.oracle10g;
 
 import com.dbx.agent.test.TestSupport;
 import com.dbx.agent.BaseDatabaseAgent;
+import com.dbx.agent.ConnectParams;
 import com.dbx.agent.DatabaseAgent;
 import com.dbx.agent.ObjectInfo;
 import com.dbx.agent.ObjectSource;
@@ -33,6 +34,21 @@ class Oracle10gAgentTest extends JdbcFakeExecutionBehaviorTest {
     @Test
     void agentInheritsBaseDatabaseAgent() {
         Assertions.assertTrue(createAgent() instanceof BaseDatabaseAgent);
+    }
+
+    @Test
+    void buildUrlUsesExplicitConnectionString() {
+        ConnectParams params = new ConnectParams(
+            "oracle.example.com",
+            1521,
+            "ORCL",
+            "scott",
+            "tiger",
+            "",
+            "jdbc:oracle:thin:@oracle.example.com:1521:ORCL"
+        );
+
+        Assertions.assertEquals("jdbc:oracle:thin:@oracle.example.com:1521:ORCL", Oracle10gAgent.buildUrl(params));
     }
 
     @Test

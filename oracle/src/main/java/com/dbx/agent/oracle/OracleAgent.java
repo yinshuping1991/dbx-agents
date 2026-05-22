@@ -96,8 +96,7 @@ public final class OracleAgent extends BaseDatabaseAgent {
                 props.setProperty("internal_logon", "SYSDBA");
             }
 
-            String url = "jdbc:oracle:thin:@" + params.getHost() + ":" + params.getPort() + "/" + serviceName;
-            connection = DriverManager.getConnection(url, props);
+            connection = DriverManager.getConnection(buildUrl(params, serviceName), props);
             try (var stmt = connection.createStatement()) {
                 stmt.execute("ALTER SESSION SET NLS_LANGUAGE='AMERICAN'");
             }
@@ -116,8 +115,7 @@ public final class OracleAgent extends BaseDatabaseAgent {
                 props.setProperty("internal_logon", "SYSDBA");
             }
 
-            String url = "jdbc:oracle:thin:@" + params.getHost() + ":" + params.getPort() + "/" + serviceName;
-            try (Connection conn = DriverManager.getConnection(url, props)) {
+            try (Connection conn = DriverManager.getConnection(buildUrl(params, serviceName), props)) {
                 return conn.isValid(5);
             }
         });
@@ -460,6 +458,26 @@ public final class OracleAgent extends BaseDatabaseAgent {
         props.setProperty("password", params.getPassword());
         props.setProperty("oracle.jdbc.defaultNChar", "true");
         return props;
+    }
+
+    static String buildUrl(ConnectParams params) {
+        return buildUrl(params, serviceName(params));
+    }
+
+    private static String buildUrl(ConnectParams params, String serviceName) {
+        String connectionString = params.getConnection_string();
+        if (connectionString != null && !connectionString.trim().isEmpty()) {
+            return connectionString;
+        }
+        return "jdbc:oracle:thin:@" + params.getHost() + ":" + params.getPort() + "/" + serviceName;
+    }
+
+    private static String serviceName(ConnectParams params) {
+        String serviceName = params.getDatabase();
+        if (serviceName.toUpperCase(Locale.ROOT).startsWith("SYSDBA:")) {
+            return serviceName.substring(7);
+        }
+        return serviceName;
     }
 
     private static String formatDataType(
