@@ -7,7 +7,8 @@ This guide defines the expected shape of a DBX agent. Treat it as the checklist 
 Every agent is a standalone JVM process that:
 
 - Implements `com.dbx.agent.DatabaseAgent`.
-- Prefer extending `com.dbx.agent.BaseDatabaseAgent` for Java agents.
+- Prefer extending `com.dbx.agent.ConfiguredJdbcAgent` for standard JDBC agents.
+- Extend `com.dbx.agent.AbstractJdbcAgent` when the database needs custom metadata SQL but can still share lifecycle and execution behavior.
 - Starts with `new JsonRpcServer(new <Agent>()).run()` in its `main` method.
 - Talks to DBX over stdin/stdout JSON-RPC 2.0.
 - Uses JDBC for database access unless the module is explicitly designed around a non-JDBC protocol.
@@ -19,8 +20,8 @@ The public behavior should be consistent across agents even when each database h
 
 Each agent must implement these capabilities:
 
-- `connect(params)`: load the driver class, build the JDBC URL, open one `Connection`, and store enough context for metadata calls.
-- `testConnection(params)`: open a short-lived connection and close it with try-with-resources.
+- `connect(params)`: handled by the shared JDBC foundation for JDBC agents.
+- `testConnection(params)`: handled by the shared JDBC foundation for JDBC agents.
 - `listDatabases()`: return visible catalogs/databases when the database supports them; otherwise return one sensible default database.
 - `listSchemas()`: return schemas in stable order.
 - `listTables(schema)`: return table-like objects for the selected schema, with normalized `type` values where possible.
@@ -28,9 +29,9 @@ Each agent must implement these capabilities:
 - `listIndexes(schema, table)`: return one `IndexInfo` per index, preserving column order.
 - `listForeignKeys(schema, table)`: return outbound foreign keys when available.
 - `listTriggers(schema, table)`: return triggers when available; return an empty list if the database has no trigger metadata.
-- `executeQuery(sql, schema, options)`: execute arbitrary user SQL through `JdbcExecutor`.
-- `disconnect()`: close the connection and clear the stored reference.
-- `getConnection()`: return the stored `Connection`.
+- `executeQuery(sql, schema, options)`: inherited from the shared JDBC foundation unless the agent has a documented custom execution behavior.
+- `disconnect()`: inherited from the shared JDBC foundation.
+- `getConnection()`: inherited from the shared JDBC foundation.
 
 Throw `IllegalStateException("Not connected")` when a method requires a connection and none exists.
 
@@ -38,41 +39,28 @@ Throw `IllegalStateException("Not connected")` when a method requires a connecti
 
 Do not classify statements by SQL prefix inside individual agents.
 
-Use:
+For most JDBC agents, inherit this from `AbstractJdbcAgent` or `ConfiguredJdbcAgent`. Do not copy the execution method into the agent class. If a custom value reader is required, override `resultValue(...)`:
 
 ```java
 @Override
-public QueryResult executeQuery(String sql, String schema, ExecuteQueryOptions options) {
-    return JdbcExecutor.INSTANCE.execute(
-        requireConnected(),
-        sql,
-        schema,
-        this::setSchemaSQL,
-        options.getMaxRows(),
-        options.getFetchSize(),
-        JdbcExecutor.INSTANCE::defaultResultValue
-    );
+protected Object resultValue(ResultSet rs, int index, int sqlType) {
+    return unchecked(() -> rs.getString(index));
 }
 ```
 
-Some drivers return non-standard Java types from `ResultSet.getObject`. If a driver is safer when values are stringified, pass a value reader:
+For simple standard JDBC metadata agents, start with a profile:
 
 ```java
-@Override
-public QueryResult executeQuery(String sql, String schema, ExecuteQueryOptions options) {
-    return JdbcExecutor.INSTANCE.execute(
-        requireConnected(),
-        sql,
-        schema,
-        this::setSchemaSQL,
-        options.getMaxRows(),
-        options.getFetchSize(),
-        this::stringResultValue
+public final class ExampleAgent extends ConfiguredJdbcAgent {
+    public static final JdbcAgentProfile EXAMPLE_PROFILE = new JdbcAgentProfile(
+        "com.example.Driver",
+        "jdbc:example://{host}:{port}/{database}",
+        1234
     );
-}
 
-private Object stringResultValue(ResultSet rs, int index, int sqlType) {
-    return unchecked(() -> rs.getString(index));
+    public ExampleAgent() {
+        super(EXAMPLE_PROFILE);
+    }
 }
 ```
 
@@ -94,10 +82,13 @@ An agent must not reintroduce local copies of:
 - `MAX_ROWS`
 - `executeUpdate(trimmedSql)` in `executeQuery`
 - result truncation based on `rows.size >= MAX_ROWS`
+- `Class.forName(...)` / `DriverManager.getConnection(...)` lifecycle boilerplate outside shared foundation extension points
+- local `disconnect()` copies for JDBC agents
+- local `JdbcExecutor.INSTANCE.execute(...)` copies for standard query execution
 
 ## Schema And Identifier Rules
 
-Override `setSchemaSQL(schema)` for the database dialect.
+Override `setSchemaSQL(schema)` for the database dialect, or configure the profile dialect options when standard quoting is enough.
 
 Use `JdbcIdentifiers` helpers when quoting identifiers:
 
@@ -120,6 +111,16 @@ public String setSchemaSQL(String schema) {
 Never concatenate unquoted user-provided schema names into schema-switching SQL unless the target database requires unquoted identifiers and the value has already been validated.
 
 For metadata queries, prefer prepared statements for `schema`, `table`, and other user-controlled values.
+
+## Shared JDBC Foundation
+
+Use the smallest shared base that matches the database:
+
+- `ConfiguredJdbcAgent`: standard JDBC lifecycle, execution, and standard `DatabaseMetaData`-based metadata.
+- `PostgresLikeAgent`: PostgreSQL-family metadata with shared lifecycle and execution.
+- `AbstractJdbcAgent`: custom metadata SQL with shared lifecycle, execution, paging, transactions, result conversion, and DDL fallback.
+
+If a database cannot yet use the shared foundation, add it to the validation allowlist with a specific reason and tests covering the custom behavior. Remove the allowlist entry when the module migrates.
 
 ## Driver Packaging
 

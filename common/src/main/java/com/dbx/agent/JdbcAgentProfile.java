@@ -12,6 +12,12 @@ public class JdbcAgentProfile {
     private final boolean skipExecutionContext;
     private final Set<String> excludedSchemas;
     private final List<String> tableTypes;
+    private final String identifierQuote;
+    private final String schemaSwitchPrefix;
+    private final boolean catalogFallbackEnabled;
+    private final boolean nativeTableDdlSupported;
+    private final boolean objectSourceSupported;
+    private final boolean triggersSupported;
 
     public JdbcAgentProfile(String driverClass, String urlTemplate) {
         this(driverClass, urlTemplate, 0);
@@ -40,12 +46,48 @@ public class JdbcAgentProfile {
         Set<String> excludedSchemas,
         List<String> tableTypes
     ) {
+        this(
+            driverClass,
+            urlTemplate,
+            defaultPort,
+            skipExecutionContext,
+            excludedSchemas,
+            tableTypes,
+            "\"",
+            "SET SCHEMA",
+            true,
+            false,
+            false,
+            false
+        );
+    }
+
+    public JdbcAgentProfile(
+        String driverClass,
+        String urlTemplate,
+        int defaultPort,
+        boolean skipExecutionContext,
+        Set<String> excludedSchemas,
+        List<String> tableTypes,
+        String identifierQuote,
+        String schemaSwitchPrefix,
+        boolean catalogFallbackEnabled,
+        boolean nativeTableDdlSupported,
+        boolean objectSourceSupported,
+        boolean triggersSupported
+    ) {
         this.driverClass = driverClass;
         this.urlTemplate = urlTemplate;
         this.defaultPort = defaultPort;
         this.skipExecutionContext = skipExecutionContext;
         this.excludedSchemas = excludedSchemas;
         this.tableTypes = tableTypes;
+        this.identifierQuote = identifierQuote;
+        this.schemaSwitchPrefix = schemaSwitchPrefix;
+        this.catalogFallbackEnabled = catalogFallbackEnabled;
+        this.nativeTableDdlSupported = nativeTableDdlSupported;
+        this.objectSourceSupported = objectSourceSupported;
+        this.triggersSupported = triggersSupported;
     }
 
     public String getDriverClass() {
@@ -72,6 +114,30 @@ public class JdbcAgentProfile {
         return tableTypes;
     }
 
+    public String getIdentifierQuote() {
+        return identifierQuote;
+    }
+
+    public String getSchemaSwitchPrefix() {
+        return schemaSwitchPrefix;
+    }
+
+    public boolean getCatalogFallbackEnabled() {
+        return catalogFallbackEnabled;
+    }
+
+    public boolean getNativeTableDdlSupported() {
+        return nativeTableDdlSupported;
+    }
+
+    public boolean getObjectSourceSupported() {
+        return objectSourceSupported;
+    }
+
+    public boolean getTriggersSupported() {
+        return triggersSupported;
+    }
+
     public String buildUrl(ConnectParams params) {
         if (!params.getConnection_string().trim().isEmpty()) {
             return params.getConnection_string();
@@ -82,6 +148,17 @@ public class JdbcAgentProfile {
             .replace("{port}", Integer.toString(port))
             .replace("{database}", params.getDatabase());
         return appendUrlParams(base, params.getUrl_params());
+    }
+
+    public String quoteIdentifier(String identifier) {
+        return identifierQuote + identifier.replace(identifierQuote, identifierQuote + identifierQuote) + identifierQuote;
+    }
+
+    public String schemaSwitchSql(String schema) {
+        if (skipExecutionContext) {
+            return "";
+        }
+        return schemaSwitchPrefix + " " + quoteIdentifier(schema);
     }
 
     private static String appendUrlParams(String url, String urlParams) {

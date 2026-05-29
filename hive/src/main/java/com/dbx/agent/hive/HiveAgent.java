@@ -1,51 +1,31 @@
 package com.dbx.agent.hive;
 
-import com.dbx.agent.BaseDatabaseAgent;
+import com.dbx.agent.AbstractJdbcAgent;
 import com.dbx.agent.ColumnInfo;
 import com.dbx.agent.ConnectParams;
 import com.dbx.agent.DatabaseInfo;
-import com.dbx.agent.ExecuteQueryOptions;
 import com.dbx.agent.ForeignKeyInfo;
 import com.dbx.agent.IndexInfo;
-import com.dbx.agent.JdbcExecutor;
 import com.dbx.agent.JdbcIdentifiers;
 import com.dbx.agent.JsonRpcServer;
-import com.dbx.agent.QueryResult;
 import com.dbx.agent.TableInfo;
 import com.dbx.agent.TriggerInfo;
-import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.ResultSet;
-import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
 
-public final class HiveAgent extends BaseDatabaseAgent {
-    private Connection connection;
+public final class HiveAgent extends AbstractJdbcAgent {
 
     @Override
-    public Connection getConnection() {
-        return connection;
+    protected String driverClass() {
+        return "org.apache.hive.jdbc.HiveDriver";
     }
 
     @Override
-    public void connect(ConnectParams params) {
-        uncheckedVoid(() -> {
-            Class.forName("org.apache.hive.jdbc.HiveDriver");
-            connection = DriverManager.getConnection(buildUrl(params), params.getUsername(), params.getPassword());
-        });
-    }
-
-    @Override
-    public boolean testConnection(ConnectParams params) {
-        return unchecked(() -> {
-            Class.forName("org.apache.hive.jdbc.HiveDriver");
-            try (Connection conn = DriverManager.getConnection(buildUrl(params), params.getUsername(), params.getPassword())) {
-                return conn.isValid(5);
-            }
-        });
+    protected String buildJdbcUrl(ConnectParams params) {
+        return buildUrl(params);
     }
 
     @Override
@@ -134,30 +114,15 @@ public final class HiveAgent extends BaseDatabaseAgent {
     }
 
     @Override
-    public QueryResult executeQuery(String sql, String schema, ExecuteQueryOptions options) {
-        return JdbcExecutor.INSTANCE.execute(
-            requireConnected(),
-            sql,
-            schema,
-            this::setSchemaSQL,
-            options.getMaxRows(),
-            options.getFetchSize(),
-            this::stringResultValue
-        );
-    }
-
-    @Override
     public String setSchemaSQL(String schema) {
         return "USE " + JdbcIdentifiers.INSTANCE.backtick(schema);
     }
 
     @Override
-    public void disconnect() {
-        uncheckedVoid(() -> {
-            if (connection != null) {
-                connection.close();
-            }
-            connection = null;
+    protected Object resultValue(ResultSet rs, int index, int sqlType) {
+        return unchecked(() -> {
+            Object value = rs.getObject(index);
+            return rs.wasNull() ? null : value == null ? null : value.toString();
         });
     }
 
@@ -165,13 +130,6 @@ public final class HiveAgent extends BaseDatabaseAgent {
         try (java.sql.Statement stmt = requireConnected().createStatement()) {
             stmt.execute(setSchemaSQL(schema));
         }
-    }
-
-    private Object stringResultValue(ResultSet rs, int index, int sqlType) {
-        return unchecked(() -> {
-            Object value = rs.getObject(index);
-            return rs.wasNull() ? null : value == null ? null : value.toString();
-        });
     }
 
     private static String buildUrl(ConnectParams params) {

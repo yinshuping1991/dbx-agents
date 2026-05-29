@@ -1,18 +1,14 @@
 package com.dbx.agent;
 
-import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.ResultSet;
-import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 
-public abstract class PostgresLikeAgent implements DatabaseAgent {
+public abstract class PostgresLikeAgent extends AbstractJdbcAgent {
     private final PostgresLikeAgentProfile profile;
-    private Connection connection;
 
     protected PostgresLikeAgent(PostgresLikeAgentProfile profile) {
         this.profile = profile;
@@ -23,26 +19,13 @@ public abstract class PostgresLikeAgent implements DatabaseAgent {
     }
 
     @Override
-    public Connection getConnection() {
-        return connection;
+    protected String driverClass() {
+        return profile.getDriverClass();
     }
 
     @Override
-    public void connect(ConnectParams params) {
-        uncheckedVoid(() -> {
-            Class.forName(profile.getDriverClass());
-            connection = DriverManager.getConnection(profile.buildUrl(params), params.getUsername(), params.getPassword());
-        });
-    }
-
-    @Override
-    public boolean testConnection(ConnectParams params) {
-        return unchecked(() -> {
-            Class.forName(profile.getDriverClass());
-            try (Connection conn = DriverManager.getConnection(profile.buildUrl(params), params.getUsername(), params.getPassword())) {
-                return conn.isValid(5);
-            }
-        });
+    protected String buildJdbcUrl(ConnectParams params) {
+        return profile.buildUrl(params);
     }
 
     @Override
@@ -339,100 +322,12 @@ public abstract class PostgresLikeAgent implements DatabaseAgent {
     }
 
     @Override
-    public QueryResult executeQuery(String sql, String schema, ExecuteQueryOptions options) {
-        return JdbcExecutor.INSTANCE.execute(
-            requireConnection(),
-            sql,
-            schema,
-            this::setSchemaSQL,
-            options.getMaxRows(),
-            options.getFetchSize(),
-            this::getResultValue
-        );
-    }
-
-    @Override
-    public QueryPageResult executeQueryPage(String sql, String schema, QueryPageOptions options) {
-        return JdbcExecutor.INSTANCE.executePage(
-            requireConnection(),
-            sql,
-            schema,
-            this::setSchemaSQL,
-            options,
-            this::getResultValue
-        );
-    }
-
-    @Override
-    public QueryPageResult fetchQueryPage(String sessionId, int pageSize) {
-        return JdbcExecutor.INSTANCE.fetchPage(sessionId, pageSize);
-    }
-
-    @Override
-    public boolean closeQuerySession(String sessionId) {
-        return JdbcExecutor.INSTANCE.closeQuerySession(sessionId);
-    }
-
-    @Override
-    public QueryResult executeTransaction(List<String> statements, String schema) {
-        return TransactionExecutor.executeUpdateStatements(requireConnection(), statements, schema, this::setSchemaSQL);
-    }
-
-    @Override
     public String setSchemaSQL(String schema) {
         return "SET search_path TO " + JdbcIdentifiers.INSTANCE.doubleQuote(schema);
     }
 
-    @Override
-    public void disconnect() {
-        uncheckedVoid(() -> {
-            if (connection != null) {
-                connection.close();
-            }
-            connection = null;
-        });
-    }
-
-    private Connection requireConnection() {
-        if (connection == null) {
-            throw new IllegalStateException("Not connected");
-        }
-        return connection;
-    }
-
-    private Object getResultValue(ResultSet rs, int index, int sqlType) {
-        return unchecked(() -> {
-            Object value;
-            switch (sqlType) {
-                case Types.BIGINT:
-                    value = rs.getLong(index);
-                    break;
-                case Types.INTEGER:
-                case Types.SMALLINT:
-                case Types.TINYINT:
-                    value = rs.getInt(index);
-                    break;
-                case Types.FLOAT:
-                case Types.REAL:
-                    value = rs.getFloat(index);
-                    break;
-                case Types.DOUBLE:
-                    value = rs.getDouble(index);
-                    break;
-                case Types.DECIMAL:
-                case Types.NUMERIC:
-                    value = rs.getBigDecimal(index);
-                    break;
-                case Types.BOOLEAN:
-                case Types.BIT:
-                    value = rs.getBoolean(index);
-                    break;
-                default:
-                    value = rs.getString(index);
-                    break;
-            }
-            return rs.wasNull() ? null : value;
-        });
+    private java.sql.Connection requireConnection() {
+        return requireConnected();
     }
 
     private static String normalizeTableType(String type) {
@@ -449,41 +344,8 @@ public abstract class PostgresLikeAgent implements DatabaseAgent {
         return JdbcIdentifiers.INSTANCE.doubleQuote(schema) + "." + JdbcIdentifiers.INSTANCE.doubleQuote(name);
     }
 
-    private static String trimSql(String sql) {
-        String trimmed = sql.trim();
-        while (trimmed.endsWith(";")) {
-            trimmed = trimmed.substring(0, trimmed.length() - 1).trim();
-        }
-        return trimmed;
-    }
-
     private static Integer intObject(ResultSet rs, String column) throws Exception {
         Object value = rs.getObject(column);
         return value instanceof Number ? ((Number) value).intValue() : null;
-    }
-
-    private static <T> T unchecked(ThrowingSupplier<T> supplier) {
-        try {
-            return supplier.get();
-        } catch (RuntimeException e) {
-            throw e;
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    private static void uncheckedVoid(ThrowingRunnable runnable) {
-        unchecked(() -> {
-            runnable.run();
-            return null;
-        });
-    }
-
-    private interface ThrowingSupplier<T> {
-        T get() throws Exception;
-    }
-
-    private interface ThrowingRunnable {
-        void run() throws Exception;
     }
 }

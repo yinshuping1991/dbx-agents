@@ -3,6 +3,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import Optional
 
 
 INFRA_MODULES = {"common", "test-support"}
@@ -11,6 +12,25 @@ KOTLIN_FILE_SUFFIXES = (".kt", ".kts")
 KOTLIN_SCAN_EXCLUDED_PARTS = {".git", ".gradle", "build"}
 DEFAULT_AGENT_JRE_KEY = "21"
 LEGACY_ORACLE_JRE_KEY = "8"
+NON_JDBC_AGENT_MODULES = {"mongodb"}
+JDBC_ARCHITECTURE_ALLOWLIST = {
+    "access": "custom Access metadata and URL behavior pending migration",
+    "dameng": "custom Dameng metadata and DDL pending migration",
+    "db2": "custom DB2 metadata pending migration",
+    "gaussdb": "custom GaussDB metadata pending migration",
+    "goldendb": "custom GoldenDB metadata pending migration",
+    "informix": "custom Informix metadata pending migration",
+    "neo4j": "custom Neo4j transaction/query behavior pending migration",
+    "oracle": "custom Oracle metadata and connection properties pending migration",
+    "oracle-10g": "custom Oracle 10g metadata and Java 8 runtime pending migration",
+    "sundb": "custom SunDB metadata pending migration",
+    "tdengine": "custom TDengine WebSocket JDBC behavior pending migration",
+}
+APPROVED_JDBC_BASES = {
+    "AbstractJdbcAgent",
+    "ConfiguredJdbcAgent",
+    "PostgresLikeAgent",
+}
 
 FORBIDDEN_PATTERNS = [
     (re.compile(r"private\s+val\s+QUERY_PREFIXES"), "forbidden local SQL prefix classifier"),
@@ -18,6 +38,14 @@ FORBIDDEN_PATTERNS = [
     (re.compile(r"executeUpdate\s*\(\s*trimmedSql\s*\)"), "forbidden executeUpdate(trimmedSql) in query execution"),
     (re.compile(r"truncated\s*=\s*rows\.size\s*>=\s*MAX_ROWS"), "forbidden inclusive truncation check"),
     (re.compile(r"val\s+truncated\s*=\s*rs\.next\s*\(\s*\)"), "forbidden extra ResultSet next() truncation probe"),
+]
+
+COPIED_JDBC_INFRASTRUCTURE_PATTERNS = [
+    (re.compile(r"\bClass\.forName\s*\("), "copied driver loading"),
+    (re.compile(r"\bDriverManager\.getConnection\s*\("), "copied JDBC connection creation"),
+    (re.compile(r"public\s+void\s+disconnect\s*\("), "copied JDBC disconnect lifecycle"),
+    (re.compile(r"JdbcExecutor\.INSTANCE\.execute\s*\("), "copied JDBC query execution"),
+    (re.compile(r"private\s+Object\s+(?:getResultValue|resultValue|stringResultValue)\s*\("), "copied result value reader"),
 ]
 
 
@@ -101,6 +129,53 @@ def validate_manifest_fields(root: Path, modules: set[str]) -> list[str]:
     return problems
 
 
+def validate_jdbc_architecture(root: Path, modules: set[str]) -> list[str]:
+    problems: list[str] = []
+    for module in sorted(modules - NON_JDBC_AGENT_MODULES):
+        source = main_class_source(root, module)
+        if source is None or not source.exists():
+            continue
+        text = source.read_text(encoding="utf-8")
+        base_match = re.search(r"\bextends\s+([A-Za-z0-9_]+)", text)
+        base = base_match.group(1) if base_match else ""
+        if module not in JDBC_ARCHITECTURE_ALLOWLIST and base not in APPROVED_JDBC_BASES:
+            problems.append(
+                f"{source.relative_to(root)}: JDBC agents must extend AbstractJdbcAgent, ConfiguredJdbcAgent, or PostgresLikeAgent"
+            )
+        if module in JDBC_ARCHITECTURE_ALLOWLIST:
+            continue
+        for line_number, line in enumerate(text.splitlines(), start=1):
+            for pattern, message in COPIED_JDBC_INFRASTRUCTURE_PATTERNS:
+                if pattern.search(line):
+                    problems.append(f"{source.relative_to(root)}:{line_number}: {message}; use shared JDBC foundation")
+    return problems
+
+
+def validate_authoring_template(root: Path) -> list[str]:
+    template = root / "docs/examples/jdbc-agent-template/src/main/java/com/dbx/agent/template/TemplateAgent.java"
+    if not template.exists():
+        return []
+    text = template.read_text(encoding="utf-8")
+    problems: list[str] = []
+    if "extends BaseDatabaseAgent" in text:
+        problems.append(f"{template.relative_to(root)}: template must use shared JDBC foundation")
+    for pattern, message in COPIED_JDBC_INFRASTRUCTURE_PATTERNS:
+        if pattern.search(text):
+            problems.append(f"{template.relative_to(root)}: template contains {message}")
+    return problems
+
+
+def main_class_source(root: Path, module: str) -> Optional[Path]:
+    build_file = root / module / "build.gradle"
+    if not build_file.exists():
+        return None
+    attrs = manifest_attributes(build_file.read_text(encoding="utf-8"))
+    main_class = attrs.get("Main-Class")
+    if main_class is None:
+        return None
+    return root / module / "src/main/java" / Path(*main_class.split(".")).with_suffix(".java")
+
+
 def validate_release_runtime_keys(root: Path) -> list[str]:
     workflow = root / ".github/workflows/release.yml"
     if not workflow.exists():
@@ -159,6 +234,8 @@ def validate(root: Path) -> list[str]:
         validate_versions(root)
         + validate_source_patterns(root)
         + validate_manifest_fields(root, modules)
+        + validate_jdbc_architecture(root, modules)
+        + validate_authoring_template(root)
         + validate_release_runtime_keys(root)
         + validate_no_kotlin_residue(root)
     )

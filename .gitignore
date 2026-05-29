@@ -3,3 +3,5 @@ gradle.properties
 build/
 .gradle/
 .DS_Store
+docs/
+openspec

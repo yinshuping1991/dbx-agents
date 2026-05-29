@@ -1,10 +1,9 @@
 package com.dbx.agent.h2;
 
-import com.dbx.agent.BaseDatabaseAgent;
+import com.dbx.agent.AbstractJdbcAgent;
 import com.dbx.agent.ColumnInfo;
 import com.dbx.agent.ConnectParams;
 import com.dbx.agent.DatabaseInfo;
-import com.dbx.agent.ExecuteQueryOptions;
 import com.dbx.agent.ForeignKeyInfo;
 import com.dbx.agent.IndexInfo;
 import com.dbx.agent.JdbcExecutor;
@@ -12,12 +11,10 @@ import com.dbx.agent.JdbcIdentifiers;
 import com.dbx.agent.JsonRpcServer;
 import com.dbx.agent.ObjectInfo;
 import com.dbx.agent.ObjectSource;
-import com.dbx.agent.QueryResult;
 import com.dbx.agent.TableInfo;
 import com.dbx.agent.TriggerInfo;
 
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -28,32 +25,22 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 
-public final class H2Agent extends BaseDatabaseAgent {
-    private Connection connection;
+public final class H2Agent extends AbstractJdbcAgent {
     private String databaseName = "";
 
     @Override
-    public Connection getConnection() {
-        return connection;
+    protected String driverClass() {
+        return "org.h2.Driver";
     }
 
     @Override
-    public void connect(ConnectParams params) {
-        uncheckedVoid(() -> {
-            Class.forName("org.h2.Driver");
-            connection = DriverManager.getConnection(buildUrl(params), params.getUsername(), params.getPassword());
-            databaseName = params.getDatabase();
-        });
+    protected String buildJdbcUrl(ConnectParams params) {
+        return buildUrl(params);
     }
 
     @Override
-    public boolean testConnection(ConnectParams params) {
-        return unchecked(() -> {
-            Class.forName("org.h2.Driver");
-            try (Connection conn = DriverManager.getConnection(buildUrl(params), params.getUsername(), params.getPassword())) {
-                return conn.isValid(5);
-            }
-        });
+    protected void afterConnect(ConnectParams params, Connection connection) {
+        databaseName = params.getDatabase();
     }
 
     @Override
@@ -324,31 +311,13 @@ public final class H2Agent extends BaseDatabaseAgent {
     }
 
     @Override
-    public QueryResult executeQuery(String sql, String schema, ExecuteQueryOptions options) {
-        return JdbcExecutor.INSTANCE.execute(
-            requireConnected(),
-            sql,
-            schema,
-            this::setSchemaSQL,
-            options.getMaxRows(),
-            options.getFetchSize(),
-            JdbcExecutor.INSTANCE::defaultResultValue
-        );
-    }
-
-    @Override
     public String setSchemaSQL(String schema) {
         return "SET SCHEMA " + JdbcIdentifiers.INSTANCE.doubleQuote(schema);
     }
 
     @Override
-    public void disconnect() {
-        uncheckedVoid(() -> {
-            if (connection != null) {
-                connection.close();
-            }
-            connection = null;
-        });
+    protected Object resultValue(ResultSet rs, int index, int sqlType) {
+        return unchecked(() -> JdbcExecutor.INSTANCE.defaultResultValue(rs, index, sqlType));
     }
 
     private static String buildUrl(ConnectParams params) {

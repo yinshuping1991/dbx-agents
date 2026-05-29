@@ -1,20 +1,15 @@
 package com.dbx.agent.cassandra;
 
-import com.dbx.agent.BaseDatabaseAgent;
+import com.dbx.agent.AbstractJdbcAgent;
 import com.dbx.agent.ColumnInfo;
 import com.dbx.agent.ConnectParams;
 import com.dbx.agent.DatabaseInfo;
-import com.dbx.agent.ExecuteQueryOptions;
 import com.dbx.agent.ForeignKeyInfo;
 import com.dbx.agent.IndexInfo;
-import com.dbx.agent.JdbcExecutor;
 import com.dbx.agent.JdbcIdentifiers;
 import com.dbx.agent.JsonRpcServer;
-import com.dbx.agent.QueryResult;
 import com.dbx.agent.TableInfo;
 import com.dbx.agent.TriggerInfo;
-import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.util.ArrayList;
@@ -24,36 +19,22 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public final class CassandraAgent extends BaseDatabaseAgent {
+public final class CassandraAgent extends AbstractJdbcAgent {
     private static final Pattern TARGET_PATTERN = Pattern.compile("target[\"']?\\s*[:=]\\s*[\"']?([\\w]+)");
-    private Connection connection;
 
     @Override
-    public Connection getConnection() {
-        return connection;
+    protected String driverClass() {
+        return "com.ing.data.cassandra.jdbc.CassandraDriver";
+    }
+
+    @Override
+    protected String buildJdbcUrl(ConnectParams params) {
+        return buildUrl(params);
     }
 
     @Override
     public String setSchemaSQL(String schema) {
         return "USE " + JdbcIdentifiers.INSTANCE.doubleQuote(schema);
-    }
-
-    @Override
-    public void connect(ConnectParams params) {
-        uncheckedVoid(() -> {
-            Class.forName("com.ing.data.cassandra.jdbc.CassandraDriver");
-            connection = DriverManager.getConnection(buildUrl(params), params.getUsername(), params.getPassword());
-        });
-    }
-
-    @Override
-    public boolean testConnection(ConnectParams params) {
-        return unchecked(() -> {
-            Class.forName("com.ing.data.cassandra.jdbc.CassandraDriver");
-            try (Connection conn = DriverManager.getConnection(buildUrl(params), params.getUsername(), params.getPassword())) {
-                return conn.isValid(5);
-            }
-        });
     }
 
     @Override
@@ -171,29 +152,7 @@ public final class CassandraAgent extends BaseDatabaseAgent {
     }
 
     @Override
-    public QueryResult executeQuery(String sql, String schema, ExecuteQueryOptions options) {
-        return JdbcExecutor.INSTANCE.execute(
-            requireConnected(),
-            sql,
-            schema,
-            this::setSchemaSQL,
-            options.getMaxRows(),
-            options.getFetchSize(),
-            this::stringResultValue
-        );
-    }
-
-    @Override
-    public void disconnect() {
-        uncheckedVoid(() -> {
-            if (connection != null) {
-                connection.close();
-            }
-            connection = null;
-        });
-    }
-
-    private Object stringResultValue(ResultSet rs, int index, int sqlType) {
+    protected Object resultValue(ResultSet rs, int index, int sqlType) {
         return unchecked(() -> {
             Object value = rs.getObject(index);
             return rs.wasNull() ? null : value == null ? null : value.toString();

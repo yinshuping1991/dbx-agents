@@ -1,22 +1,18 @@
 package com.dbx.agent.snowflake;
 
-import com.dbx.agent.BaseDatabaseAgent;
+import com.dbx.agent.AbstractJdbcAgent;
 import com.dbx.agent.ColumnInfo;
 import com.dbx.agent.ConnectParams;
 import com.dbx.agent.DatabaseInfo;
-import com.dbx.agent.ExecuteQueryOptions;
 import com.dbx.agent.ForeignKeyInfo;
 import com.dbx.agent.IndexInfo;
-import com.dbx.agent.JdbcExecutor;
 import com.dbx.agent.JdbcIdentifiers;
 import com.dbx.agent.JsonRpcServer;
 import com.dbx.agent.ObjectInfo;
 import com.dbx.agent.ObjectSource;
-import com.dbx.agent.QueryResult;
 import com.dbx.agent.TableInfo;
 import com.dbx.agent.TriggerInfo;
 import java.sql.Connection;
-import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -24,30 +20,16 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 
-public final class SnowflakeAgent extends BaseDatabaseAgent {
-    private Connection connection;
+public final class SnowflakeAgent extends AbstractJdbcAgent {
 
     @Override
-    public Connection getConnection() {
-        return connection;
+    protected String driverClass() {
+        return "net.snowflake.client.jdbc.SnowflakeDriver";
     }
 
     @Override
-    public void connect(ConnectParams params) {
-        uncheckedVoid(() -> {
-            Class.forName("net.snowflake.client.jdbc.SnowflakeDriver");
-            connection = DriverManager.getConnection(buildUrl(params), params.getUsername(), params.getPassword());
-        });
-    }
-
-    @Override
-    public boolean testConnection(ConnectParams params) {
-        return unchecked(() -> {
-            Class.forName("net.snowflake.client.jdbc.SnowflakeDriver");
-            try (Connection conn = DriverManager.getConnection(buildUrl(params), params.getUsername(), params.getPassword())) {
-                return conn.isValid(5);
-            }
-        });
+    protected String buildJdbcUrl(ConnectParams params) {
+        return buildUrl(params);
     }
 
     @Override
@@ -226,34 +208,12 @@ public final class SnowflakeAgent extends BaseDatabaseAgent {
     }
 
     @Override
-    public QueryResult executeQuery(String sql, String schema, ExecuteQueryOptions options) {
-        return JdbcExecutor.INSTANCE.execute(
-            requireConnected(),
-            sql,
-            schema,
-            this::setSchemaSQL,
-            options.getMaxRows(),
-            options.getFetchSize(),
-            this::stringResultValue
-        );
-    }
-
-    @Override
     public String setSchemaSQL(String schema) {
         return "USE SCHEMA " + JdbcIdentifiers.INSTANCE.doubleQuote(schema);
     }
 
     @Override
-    public void disconnect() {
-        uncheckedVoid(() -> {
-            if (connection != null) {
-                connection.close();
-            }
-            connection = null;
-        });
-    }
-
-    private Object stringResultValue(ResultSet rs, int index, int sqlType) {
+    protected Object resultValue(ResultSet rs, int index, int sqlType) {
         return unchecked(() -> {
             Object value = rs.getObject(index);
             return rs.wasNull() ? null : value == null ? null : value.toString();

@@ -60,6 +60,114 @@ class ValidateAgentsTest(unittest.TestCase):
                 problems,
             )
 
+    def test_jdbc_architecture_requires_shared_base_for_new_agents(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            module = root / "example"
+            source = module / "src/main/java/com/dbx/agent/example/ExampleAgent.java"
+            source.parent.mkdir(parents=True)
+            (module / "build.gradle").write_text(
+                textwrap.dedent(
+                    """
+                    tasks.named('shadowJar') {
+                        manifest {
+                            attributes(
+                                'Agent-Label': 'Example',
+                                'Main-Class': 'com.dbx.agent.example.ExampleAgent'
+                            )
+                        }
+                    }
+                    """
+                ),
+                encoding="utf-8",
+            )
+            source.write_text(
+                textwrap.dedent(
+                    """
+                    package com.dbx.agent.example;
+
+                    import com.dbx.agent.BaseDatabaseAgent;
+                    import java.sql.DriverManager;
+
+                    public final class ExampleAgent extends BaseDatabaseAgent {
+                        public void connect() throws Exception {
+                            Class.forName("example.Driver");
+                            DriverManager.getConnection("jdbc:example");
+                        }
+                    }
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            problems = validate_agents.validate_jdbc_architecture(root, {"example"})
+
+            self.assertEqual(
+                [
+                    "example/src/main/java/com/dbx/agent/example/ExampleAgent.java: JDBC agents must extend AbstractJdbcAgent, ConfiguredJdbcAgent, or PostgresLikeAgent",
+                    "example/src/main/java/com/dbx/agent/example/ExampleAgent.java:9: copied driver loading; use shared JDBC foundation",
+                    "example/src/main/java/com/dbx/agent/example/ExampleAgent.java:10: copied JDBC connection creation; use shared JDBC foundation",
+                ],
+                problems,
+            )
+
+    def test_jdbc_architecture_allows_documented_migration_exceptions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            module = root / "oracle"
+            source = module / "src/main/java/com/dbx/agent/oracle/OracleAgent.java"
+            source.parent.mkdir(parents=True)
+            (module / "build.gradle").write_text(
+                textwrap.dedent(
+                    """
+                    tasks.named('shadowJar') {
+                        manifest {
+                            attributes(
+                                'Agent-Label': 'Oracle',
+                                'Main-Class': 'com.dbx.agent.oracle.OracleAgent'
+                            )
+                        }
+                    }
+                    """
+                ),
+                encoding="utf-8",
+            )
+            source.write_text(
+                "package com.dbx.agent.oracle; public final class OracleAgent extends BaseDatabaseAgent {}\n",
+                encoding="utf-8",
+            )
+
+            self.assertEqual([], validate_agents.validate_jdbc_architecture(root, {"oracle"}))
+
+    def test_authoring_template_must_use_shared_foundation(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            template = root / "docs/examples/jdbc-agent-template/src/main/java/com/dbx/agent/template/TemplateAgent.java"
+            template.parent.mkdir(parents=True)
+            template.write_text(
+                textwrap.dedent(
+                    """
+                    package com.dbx.agent.template;
+                    import com.dbx.agent.BaseDatabaseAgent;
+                    import java.sql.DriverManager;
+                    public final class TemplateAgent extends BaseDatabaseAgent {
+                        void connect() throws Exception {
+                            DriverManager.getConnection("jdbc:template");
+                        }
+                    }
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                [
+                    "docs/examples/jdbc-agent-template/src/main/java/com/dbx/agent/template/TemplateAgent.java: template must use shared JDBC foundation",
+                    "docs/examples/jdbc-agent-template/src/main/java/com/dbx/agent/template/TemplateAgent.java: template contains copied JDBC connection creation",
+                ],
+                validate_agents.validate_authoring_template(root),
+            )
+
     def test_manifest_validation_requires_registry_fields(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
