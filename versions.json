@@ -29,5 +29,6 @@
   "vertica": "0.1.4",
   "mongodb": "0.1.8",
   "highgo": "0.1.7",
-  "yashandb": "0.1.5"
+  "yashandb": "0.1.5",
+  "iris": "0.1.0"
 }
