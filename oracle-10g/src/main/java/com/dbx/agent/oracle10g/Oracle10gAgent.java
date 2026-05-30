@@ -401,8 +401,7 @@ public final class Oracle10gAgent extends BaseDatabaseAgent {
 
     private Object stringResultValue(ResultSet rs, int index, int sqlType) {
         return unchecked(() -> {
-            String value = rs.getString(index);
-            return rs.wasNull() ? null : value;
+            return JdbcExecutor.stringResultValue(rs, index, sqlType);
         });
     }
 

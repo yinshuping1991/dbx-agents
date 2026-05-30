@@ -508,8 +508,7 @@ public final class OracleAgent extends BaseDatabaseAgent {
 
     private static Object stringResultValue(ResultSet rs, int index, int sqlType) {
         try {
-            String value = rs.getString(index);
-            return rs.wasNull() ? null : value;
+            return JdbcExecutor.stringResultValue(rs, index, sqlType);
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }

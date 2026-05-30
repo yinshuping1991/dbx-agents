@@ -1,9 +1,12 @@
 package com.dbx.agent;
 
 import java.sql.Connection;
+import java.sql.Blob;
+import java.sql.Clob;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
+import java.sql.SQLXML;
 import java.sql.Statement;
 import java.sql.Types;
 import java.util.ArrayList;
@@ -289,11 +292,89 @@ public final class JdbcExecutor {
             case Types.BIT:
                 value = rs.getBoolean(index);
                 break;
+            case Types.CHAR:
+            case Types.VARCHAR:
+            case Types.LONGVARCHAR:
+            case Types.NCHAR:
+            case Types.NVARCHAR:
+            case Types.LONGNVARCHAR:
+            case Types.CLOB:
+            case Types.NCLOB:
+                value = rs.getString(index);
+                break;
+            case Types.BINARY:
+            case Types.VARBINARY:
+            case Types.LONGVARBINARY:
+            case Types.BLOB:
+                value = bytesToHex(rs.getBytes(index));
+                break;
+            case Types.SQLXML:
+                value = sqlXmlToString(rs.getSQLXML(index));
+                break;
             default:
-                value = rs.getObject(index);
+                value = normalizeResultValue(rs.getObject(index));
                 break;
         }
         return rs.wasNull() ? null : value;
+    }
+
+    public static Object stringResultValue(ResultSet rs, int index, int sqlType) throws SQLException {
+        Object value;
+        switch (sqlType) {
+            case Types.BINARY:
+            case Types.VARBINARY:
+            case Types.LONGVARBINARY:
+            case Types.BLOB:
+                value = bytesToHex(rs.getBytes(index));
+                break;
+            case Types.SQLXML:
+                value = sqlXmlToString(rs.getSQLXML(index));
+                break;
+            default:
+                value = rs.getString(index);
+                break;
+        }
+        return rs.wasNull() ? null : value;
+    }
+
+    public static Object normalizeResultValue(Object value) throws SQLException {
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof Clob) {
+            Clob clob = (Clob) value;
+            return clob.getSubString(1, Math.toIntExact(clob.length()));
+        }
+        if (value instanceof Blob) {
+            Blob blob = (Blob) value;
+            return bytesToHex(blob.getBytes(1, Math.toIntExact(blob.length())));
+        }
+        if (value instanceof SQLXML) {
+            SQLXML sqlxml = (SQLXML) value;
+            return sqlxml.getString();
+        }
+        if (value instanceof byte[]) {
+            byte[] bytes = (byte[]) value;
+            return bytesToHex(bytes);
+        }
+        return value instanceof Number || value instanceof Boolean ? value : value.toString();
+    }
+
+    public static String bytesToHex(byte[] bytes) {
+        if (bytes == null) {
+            return null;
+        }
+        StringBuilder result = new StringBuilder(bytes.length * 2 + 2);
+        result.append("0x");
+        for (byte b : bytes) {
+            result.append(Character.forDigit((b >> 4) & 0xF, 16));
+            result.append(Character.forDigit(b & 0xF, 16));
+        }
+        return result.toString();
+    }
+
+    private static String sqlXmlToString(SQLXML value) throws SQLException {
+        return value == null ? null : value.getString();
     }
 
     private QueryPageResult readSessionPage(QuerySession session, int pageSize, long executionTimeMs) {
