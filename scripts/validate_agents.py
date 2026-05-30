@@ -22,6 +22,7 @@ JDBC_ARCHITECTURE_ALLOWLIST = {
     "informix": "custom Informix metadata pending migration",
     "neo4j": "custom Neo4j transaction/query behavior pending migration",
     "oracle": "custom Oracle metadata and connection properties pending migration",
+    "oracle-legacy": "custom Oracle legacy metadata and connection properties pending migration",
     "oracle-10g": "custom Oracle 10g metadata and Java 8 runtime pending migration",
     "sundb": "custom SunDB metadata pending migration",
     "tdengine": "custom TDengine WebSocket JDBC behavior pending migration",

@@ -18,6 +18,7 @@
   "neo4j": "0.1.10",
   "oceanbase-oracle": "0.1.5",
   "oracle": "0.1.12",
+  "oracle-legacy": "0.1.0",
   "oracle-10g": "0.1.12",
   "snowflake": "0.1.10",
   "saphana": "0.1.5",
