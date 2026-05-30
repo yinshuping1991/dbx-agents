@@ -324,7 +324,7 @@ public final class DamengAgent extends BaseDatabaseAgent {
         return unchecked(() -> {
             List<TriggerInfo> result = new ArrayList<>();
             String sql = """
-                SELECT TRIGGER_NAME, TRIGGERING_EVENT, TRIGGER_TYPE
+                SELECT TRIGGER_NAME, TRIGGERING_EVENT, '' AS TRIGGER_TYPE
                 FROM ALL_TRIGGERS
                 WHERE OWNER = ? AND TABLE_NAME = ?
                 ORDER BY TRIGGER_NAME

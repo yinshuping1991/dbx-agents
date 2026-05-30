@@ -30,6 +30,21 @@ class DamengAgentMetadataTest {
     }
 
     @Test
+    void triggerMetadataDoesNotRequireOracleTriggerTypeColumn() {
+        DamengAgent agent = new DamengAgent();
+        TestSupport.setPrivateConnection(agent, JdbcMetadataSqlFake.connection());
+
+        agent.listTriggers("APP", "USERS");
+
+        String triggersSql = JdbcMetadataSqlFake.statements.stream()
+            .filter(sql -> sql.contains("ALL_TRIGGERS"))
+            .findFirst()
+            .orElseThrow();
+        Assertions.assertFalse(triggersSql.contains("TRIGGERING_EVENT, TRIGGER_TYPE"), triggersSql);
+        Assertions.assertTrue(triggersSql.contains("'' AS TRIGGER_TYPE"), triggersSql);
+    }
+
+    @Test
     void mapsColumnCommentFromMetadata() {
         DamengAgent agent = new DamengAgent();
         TestSupport.setPrivateConnection(agent, metadataConnection());
