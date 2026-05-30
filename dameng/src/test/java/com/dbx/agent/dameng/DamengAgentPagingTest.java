@@ -13,14 +13,26 @@ import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.Statement;
 import java.sql.Types;
+import javax.sql.rowset.serial.SerialBlob;
+import javax.sql.rowset.serial.SerialClob;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class DamengAgentPagingTest {
     @Test
     void executeQueryPageStringifiesTimestampValuesBeforeJsonRpcSerialization() {
         DamengAgent agent = new DamengAgent();
-        TestSupport.setPrivateConnection(agent, timestampConnection());
+        TestSupport.setPrivateConnection(
+            agent,
+            singleValueConnection(
+                "CURRENT_TIMESTAMP",
+                Types.TIMESTAMP,
+                DmdbTimestamp.valueOf("2026-05-20 12:34:56.123456789"),
+                null,
+                null
+            )
+        );
         JsonRpcServer server = new JsonRpcServer(agent);
 
         String response = handleRequest(server, """
@@ -37,10 +49,83 @@ class DamengAgentPagingTest {
             """);
 
         assertFalse(response.contains("\"error\""), response);
+        assertTrue(response.contains("2026-05-20 12:34:56.123456"), response);
     }
 
-    private static Connection timestampConnection() {
-        Statement statement = timestampStatement();
+    @Test
+    void executeQueryPageReadsClobValuesAsText() throws Exception {
+        DamengAgent agent = new DamengAgent();
+        TestSupport.setPrivateConnection(
+            agent,
+            singleValueConnection(
+                "content",
+                Types.CLOB,
+                new SerialClob("真实文本".toCharArray()),
+                "真实文本",
+                null
+            )
+        );
+        JsonRpcServer server = new JsonRpcServer(agent);
+
+        String response = handleRequest(server, """
+            {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "execute_query_page",
+              "params": {
+                "sql": "SELECT content FROM sample",
+                "schema": "SYS",
+                "pageSize": 100
+              }
+            }
+            """);
+
+        assertFalse(response.contains("\"error\""), response);
+        assertTrue(response.contains("真实文本"), response);
+        assertFalse(response.contains("SerialClob"), response);
+    }
+
+    @Test
+    void executeQueryPageFormatsBlobValuesAsHexText() throws Exception {
+        DamengAgent agent = new DamengAgent();
+        TestSupport.setPrivateConnection(
+            agent,
+            singleValueConnection(
+                "payload",
+                Types.BLOB,
+                new SerialBlob(new byte[]{0x01, 0x2A, (byte) 0xFF}),
+                null,
+                new byte[]{0x01, 0x2A, (byte) 0xFF}
+            )
+        );
+        JsonRpcServer server = new JsonRpcServer(agent);
+
+        String response = handleRequest(server, """
+            {
+              "jsonrpc": "2.0",
+              "id": 1,
+              "method": "execute_query_page",
+              "params": {
+                "sql": "SELECT payload FROM sample",
+                "schema": "SYS",
+                "pageSize": 100
+              }
+            }
+            """);
+
+        assertFalse(response.contains("\"error\""), response);
+        assertTrue(response.contains("0x012aff"), response);
+        assertFalse(response.contains("SerialBlob"), response);
+    }
+
+    private static Connection singleValueConnection(
+        String columnLabel,
+        int sqlType,
+        Object objectValue,
+        String stringValue,
+        byte[] bytesValue
+    ) {
+        Statement statement = singleValueStatement(columnLabel, sqlType, objectValue, stringValue, bytesValue);
         return proxy(Connection.class, (method, args) -> {
             String name = method.getName();
             if ("createStatement".equals(name)) {
@@ -59,8 +144,14 @@ class DamengAgentPagingTest {
         });
     }
 
-    private static Statement timestampStatement() {
-        ResultSet resultSet = timestampResultSet();
+    private static Statement singleValueStatement(
+        String columnLabel,
+        int sqlType,
+        Object objectValue,
+        String stringValue,
+        byte[] bytesValue
+    ) {
+        ResultSet resultSet = singleValueResultSet(columnLabel, sqlType, objectValue, stringValue, bytesValue);
         return proxy(Statement.class, (method, args) -> {
             String name = method.getName();
             if ("execute".equals(name)) {
@@ -79,10 +170,15 @@ class DamengAgentPagingTest {
         });
     }
 
-    private static ResultSet timestampResultSet() {
+    private static ResultSet singleValueResultSet(
+        String columnLabel,
+        int sqlType,
+        Object objectValue,
+        String stringValue,
+        byte[] bytesValue
+    ) {
         final int[] index = {-1};
-        ResultSetMetaData metadata = timestampMetadata();
-        DmdbTimestamp timestamp = DmdbTimestamp.valueOf("2026-05-20 12:34:56.123456789");
+        ResultSetMetaData metadata = singleValueMetadata(columnLabel, sqlType);
         return proxy(ResultSet.class, (method, args) -> {
             String name = method.getName();
             if ("next".equals(name)) {
@@ -93,7 +189,13 @@ class DamengAgentPagingTest {
                 return metadata;
             }
             if ("getObject".equals(name)) {
-                return timestamp;
+                return objectValue;
+            }
+            if ("getString".equals(name)) {
+                return stringValue;
+            }
+            if ("getBytes".equals(name)) {
+                return bytesValue;
             }
             if ("wasNull".equals(name)) {
                 return false;
@@ -105,17 +207,17 @@ class DamengAgentPagingTest {
         });
     }
 
-    private static ResultSetMetaData timestampMetadata() {
+    private static ResultSetMetaData singleValueMetadata(String columnLabel, int sqlType) {
         return proxy(ResultSetMetaData.class, (method, args) -> {
             String name = method.getName();
             if ("getColumnCount".equals(name)) {
                 return 1;
             }
             if ("getColumnLabel".equals(name)) {
-                return "CURRENT_TIMESTAMP";
+                return columnLabel;
             }
             if ("getColumnType".equals(name)) {
-                return Types.TIMESTAMP;
+                return sqlType;
             }
             return defaultValue(method.getReturnType());
         });

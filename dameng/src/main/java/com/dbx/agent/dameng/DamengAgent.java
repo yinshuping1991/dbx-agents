@@ -17,10 +17,14 @@ import com.dbx.agent.QueryPageResult;
 import com.dbx.agent.QueryResult;
 import com.dbx.agent.TableInfo;
 import com.dbx.agent.TriggerInfo;
+import java.sql.Blob;
+import java.sql.Clob;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.sql.SQLXML;
+import java.sql.Types;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -384,9 +388,51 @@ public final class DamengAgent extends BaseDatabaseAgent {
 
     private Object stringResultValue(ResultSet rs, int index, int sqlType) {
         return unchecked(() -> {
-            Object value = rs.getObject(index);
-            return rs.wasNull() ? null : value == null ? null : value.toString();
+            Object value = switch (sqlType) {
+                case Types.BIGINT -> rs.getLong(index);
+                case Types.INTEGER, Types.SMALLINT, Types.TINYINT -> rs.getInt(index);
+                case Types.FLOAT, Types.REAL -> rs.getFloat(index);
+                case Types.DOUBLE -> rs.getDouble(index);
+                case Types.DECIMAL, Types.NUMERIC -> rs.getBigDecimal(index);
+                case Types.BOOLEAN, Types.BIT -> rs.getBoolean(index);
+                case Types.CHAR, Types.VARCHAR, Types.LONGVARCHAR,
+                    Types.NCHAR, Types.NVARCHAR, Types.LONGNVARCHAR,
+                    Types.CLOB, Types.NCLOB -> rs.getString(index);
+                case Types.BINARY, Types.VARBINARY, Types.LONGVARBINARY,
+                    Types.BLOB -> bytesToHex(rs.getBytes(index));
+                case Types.SQLXML -> sqlXmlToString(rs.getSQLXML(index));
+                default -> normalizeResultValue(rs.getObject(index));
+            };
+            return rs.wasNull() ? null : value;
         });
+    }
+
+    private static Object normalizeResultValue(Object value) {
+        return switch (value) {
+            case null -> null;
+            case Clob clob -> unchecked(() -> clob.getSubString(1, Math.toIntExact(clob.length())));
+            case Blob blob -> unchecked(() -> bytesToHex(blob.getBytes(1, Math.toIntExact(blob.length()))));
+            case SQLXML sqlxml -> unchecked(sqlxml::getString);
+            case byte[] bytes -> bytesToHex(bytes);
+            default -> value instanceof Number || value instanceof Boolean ? value : value.toString();
+        };
+    }
+
+    private static String sqlXmlToString(SQLXML value) {
+        return value == null ? null : unchecked(value::getString);
+    }
+
+    private static String bytesToHex(byte[] bytes) {
+        if (bytes == null) {
+            return null;
+        }
+        StringBuilder result = new StringBuilder(bytes.length * 2 + 2);
+        result.append("0x");
+        for (byte b : bytes) {
+            result.append(Character.forDigit((b >> 4) & 0xF, 16));
+            result.append(Character.forDigit(b & 0xF, 16));
+        }
+        return result.toString();
     }
 
     private static String buildUrl(ConnectParams params) {
