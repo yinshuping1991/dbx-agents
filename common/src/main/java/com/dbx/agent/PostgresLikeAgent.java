@@ -47,7 +47,12 @@ public abstract class PostgresLikeAgent extends AbstractJdbcAgent {
         return unchecked(() -> {
             List<String> result = new ArrayList<>();
             try (java.sql.PreparedStatement stmt = requireConnection().prepareStatement(
-                "SELECT schema_name FROM information_schema.schemata WHERE schema_name NOT IN ('pg_catalog','information_schema','pg_toast') ORDER BY schema_name"
+                "SELECT n.nspname AS schema_name " +
+                "FROM pg_catalog.pg_namespace n " +
+                "WHERE n.nspname NOT IN ('pg_catalog','information_schema','pg_toast') " +
+                "AND n.nspname NOT LIKE 'pg_toast_temp_%' " +
+                "AND n.nspname NOT LIKE 'pg_temp_%' " +
+                "ORDER BY n.nspname"
             ); ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
                     result.add(rs.getString("schema_name"));
@@ -62,13 +67,25 @@ public abstract class PostgresLikeAgent extends AbstractJdbcAgent {
         return unchecked(() -> {
             List<TableInfo> result = new ArrayList<>();
             try (java.sql.PreparedStatement stmt = requireConnection().prepareStatement(
-                "SELECT table_name, table_type FROM information_schema.tables WHERE table_schema = ? ORDER BY table_name"
+                "SELECT c.relname AS table_name, " +
+                "CASE c.relkind " +
+                "WHEN 'r' THEN 'TABLE' " +
+                "WHEN 'p' THEN 'TABLE' " +
+                "WHEN 'v' THEN 'VIEW' " +
+                "WHEN 'm' THEN 'MATERIALIZED VIEW' " +
+                "WHEN 'f' THEN 'FOREIGN TABLE' " +
+                "ELSE 'TABLE' END AS table_type, " +
+                "obj_description(c.oid) AS table_comment " +
+                "FROM pg_catalog.pg_class c " +
+                "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace " +
+                "WHERE n.nspname = ? AND c.relkind IN ('r','p','v','m','f') " +
+                "ORDER BY c.relname"
             )) {
                 stmt.setString(1, schema);
                 try (ResultSet rs = stmt.executeQuery()) {
                     while (rs.next()) {
                         String tableType = normalizeTableType(rs.getString("table_type"));
-                        result.add(new TableInfo(rs.getString("table_name"), tableType, null));
+                        result.add(new TableInfo(rs.getString("table_name"), tableType, rs.getString("table_comment")));
                     }
                 }
             }
@@ -84,7 +101,12 @@ public abstract class PostgresLikeAgent extends AbstractJdbcAgent {
                 result.add(new ObjectInfo(table.getName(), table.getTable_type(), schema, table.getComment()));
             }
             try (java.sql.PreparedStatement stmt = requireConnection().prepareStatement(
-                "SELECT routine_name, routine_type FROM information_schema.routines WHERE routine_schema = ? ORDER BY routine_name"
+                "SELECT p.proname AS routine_name, " +
+                "CASE p.prokind WHEN 'p' THEN 'PROCEDURE' ELSE 'FUNCTION' END AS routine_type " +
+                "FROM pg_catalog.pg_proc p " +
+                "JOIN pg_catalog.pg_namespace n ON n.oid = p.pronamespace " +
+                "WHERE n.nspname = ? AND p.prokind IN ('p','f') " +
+                "ORDER BY p.proname"
             )) {
                 stmt.setString(1, schema);
                 try (ResultSet rs = stmt.executeQuery()) {
@@ -163,11 +185,25 @@ public abstract class PostgresLikeAgent extends AbstractJdbcAgent {
         return unchecked(() -> {
             Set<String> primaryKeys = primaryKeys(schema, table);
             List<ColumnInfo> result = new ArrayList<>();
-            String sql = "SELECT column_name, data_type, is_nullable, column_default, " +
-                "numeric_precision, numeric_scale, character_maximum_length " +
-                "FROM information_schema.columns " +
-                "WHERE table_schema = ? AND table_name = ? " +
-                "ORDER BY ordinal_position";
+            String sql = "SELECT a.attname AS column_name, " +
+                "format_type(a.atttypid, a.atttypmod) AS data_type, " +
+                "NOT a.attnotnull AS is_nullable, " +
+                "pg_get_expr(ad.adbin, ad.adrelid) AS column_default, " +
+                "col_description(a.attrelid, a.attnum) AS column_comment, " +
+                "CASE WHEN t.typname = 'numeric' AND a.atttypmod > 0 " +
+                "THEN ((a.atttypmod - 4) >> 16) & 65535 ELSE NULL END AS numeric_precision, " +
+                "CASE WHEN t.typname = 'numeric' AND a.atttypmod > 0 " +
+                "THEN (a.atttypmod - 4) & 65535 ELSE NULL END AS numeric_scale, " +
+                "CASE WHEN t.typname IN ('varchar', 'bpchar') AND a.atttypmod > 0 " +
+                "THEN a.atttypmod - 4 ELSE NULL END AS character_maximum_length " +
+                "FROM pg_catalog.pg_attribute a " +
+                "JOIN pg_catalog.pg_type t ON t.oid = a.atttypid " +
+                "JOIN pg_catalog.pg_class c ON c.oid = a.attrelid " +
+                "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace " +
+                "LEFT JOIN pg_catalog.pg_attrdef ad ON ad.adrelid = a.attrelid AND ad.adnum = a.attnum " +
+                "WHERE n.nspname = ? AND c.relname = ? " +
+                "AND a.attnum > 0 AND NOT a.attisdropped " +
+                "ORDER BY a.attnum";
             try (java.sql.PreparedStatement stmt = requireConnection().prepareStatement(sql)) {
                 stmt.setString(1, schema);
                 stmt.setString(2, table);
@@ -181,7 +217,7 @@ public abstract class PostgresLikeAgent extends AbstractJdbcAgent {
                             rs.getString("column_default"),
                             primaryKeys.contains(colName),
                             null,
-                            null,
+                            rs.getString("column_comment"),
                             intObject(rs, "numeric_precision"),
                             intObject(rs, "numeric_scale"),
                             intObject(rs, "character_maximum_length")
@@ -196,14 +232,16 @@ public abstract class PostgresLikeAgent extends AbstractJdbcAgent {
     private Set<String> primaryKeys(String schema, String table) {
         return unchecked(() -> {
             Set<String> primaryKeys = new LinkedHashSet<>();
-            String sql = "SELECT kcu.column_name " +
-                "FROM information_schema.table_constraints tc " +
-                "JOIN information_schema.key_column_usage kcu " +
-                "ON tc.constraint_name = kcu.constraint_name " +
-                "AND tc.table_schema = kcu.table_schema " +
-                "WHERE tc.constraint_type = 'PRIMARY KEY' " +
-                "AND tc.table_schema = ? " +
-                "AND tc.table_name = ?";
+            String sql = "SELECT a.attname AS column_name " +
+                "FROM pg_catalog.pg_constraint co " +
+                "JOIN pg_catalog.pg_class c ON c.oid = co.conrelid " +
+                "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace " +
+                "CROSS JOIN LATERAL unnest(co.conkey) WITH ORDINALITY AS key(attnum, ord) " +
+                "JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum = key.attnum " +
+                "WHERE co.contype = 'p' " +
+                "AND n.nspname = ? " +
+                "AND c.relname = ? " +
+                "ORDER BY key.ord";
             try (java.sql.PreparedStatement stmt = requireConnection().prepareStatement(sql)) {
                 stmt.setString(1, schema);
                 stmt.setString(2, table);
@@ -265,19 +303,22 @@ public abstract class PostgresLikeAgent extends AbstractJdbcAgent {
     public List<ForeignKeyInfo> listForeignKeys(String schema, String table) {
         return unchecked(() -> {
             List<ForeignKeyInfo> result = new ArrayList<>();
-            String sql = "SELECT tc.constraint_name, kcu.column_name, " +
-                "ccu.table_name AS ref_table, ccu.column_name AS ref_column " +
-                "FROM information_schema.table_constraints tc " +
-                "JOIN information_schema.key_column_usage kcu " +
-                "ON tc.constraint_name = kcu.constraint_name " +
-                "AND tc.table_schema = kcu.table_schema " +
-                "JOIN information_schema.constraint_column_usage ccu " +
-                "ON tc.constraint_name = ccu.constraint_name " +
-                "AND tc.table_schema = ccu.table_schema " +
-                "WHERE tc.constraint_type = 'FOREIGN KEY' " +
-                "AND tc.table_schema = ? " +
-                "AND tc.table_name = ? " +
-                "ORDER BY tc.constraint_name";
+            String sql = "SELECT co.conname AS constraint_name, " +
+                "a.attname AS column_name, " +
+                "rc.relname AS ref_table, " +
+                "ra.attname AS ref_column " +
+                "FROM pg_catalog.pg_constraint co " +
+                "JOIN pg_catalog.pg_class c ON c.oid = co.conrelid " +
+                "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace " +
+                "JOIN pg_catalog.pg_class rc ON rc.oid = co.confrelid " +
+                "CROSS JOIN LATERAL unnest(co.conkey) WITH ORDINALITY AS fk(attnum, ord) " +
+                "JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum = fk.attnum " +
+                "JOIN LATERAL unnest(co.confkey) WITH ORDINALITY AS pk(attnum, ord) ON pk.ord = fk.ord " +
+                "JOIN pg_catalog.pg_attribute ra ON ra.attrelid = rc.oid AND ra.attnum = pk.attnum " +
+                "WHERE co.contype = 'f' " +
+                "AND n.nspname = ? " +
+                "AND c.relname = ? " +
+                "ORDER BY co.conname, fk.ord";
             try (java.sql.PreparedStatement stmt = requireConnection().prepareStatement(sql)) {
                 stmt.setString(1, schema);
                 stmt.setString(2, table);
@@ -300,10 +341,19 @@ public abstract class PostgresLikeAgent extends AbstractJdbcAgent {
     public List<TriggerInfo> listTriggers(String schema, String table) {
         return unchecked(() -> {
             List<TriggerInfo> result = new ArrayList<>();
-            String sql = "SELECT trigger_name, event_manipulation, action_timing " +
-                "FROM information_schema.triggers " +
-                "WHERE trigger_schema = ? AND event_object_table = ? " +
-                "ORDER BY trigger_name";
+            String sql = "SELECT tg.tgname AS trigger_name, " +
+                "trim(trailing ',' FROM (" +
+                "CASE WHEN (tg.tgtype & 4) <> 0 THEN 'INSERT,' ELSE '' END || " +
+                "CASE WHEN (tg.tgtype & 8) <> 0 THEN 'DELETE,' ELSE '' END || " +
+                "CASE WHEN (tg.tgtype & 16) <> 0 THEN 'UPDATE,' ELSE '' END || " +
+                "CASE WHEN (tg.tgtype & 32) <> 0 THEN 'TRUNCATE,' ELSE '' END" +
+                ")) AS event_manipulation, " +
+                "CASE WHEN (tg.tgtype & 2) <> 0 THEN 'BEFORE' ELSE 'AFTER' END AS action_timing " +
+                "FROM pg_catalog.pg_trigger tg " +
+                "JOIN pg_catalog.pg_class c ON c.oid = tg.tgrelid " +
+                "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace " +
+                "WHERE n.nspname = ? AND c.relname = ? AND NOT tg.tgisinternal " +
+                "ORDER BY tg.tgname";
             try (java.sql.PreparedStatement stmt = requireConnection().prepareStatement(sql)) {
                 stmt.setString(1, schema);
                 stmt.setString(2, table);
