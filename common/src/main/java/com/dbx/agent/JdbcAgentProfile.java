@@ -166,15 +166,54 @@ public class JdbcAgentProfile {
         if (params.isEmpty()) {
             return url;
         }
-        String separator = url.contains("?") ? "&" : "?";
+        if (usesColonProperties(url) && !params.endsWith(";")) {
+            params = params + ";";
+        }
+        String separator = urlParamSeparator(url);
         return url + separator + params;
     }
 
     private static String trimUrlParams(String urlParams) {
         String value = urlParams == null ? "" : urlParams.trim();
-        while (value.startsWith("?") || value.startsWith("&")) {
+        while (value.startsWith("?") || value.startsWith("&") || value.startsWith(";") || value.startsWith(":") || value.startsWith(",")) {
             value = value.substring(1);
         }
         return value;
+    }
+
+    private static String urlParamSeparator(String url) {
+        if (startsWithIgnoreCase(url, "jdbc:sqlserver:") || startsWithIgnoreCase(url, "jdbc:exa:")) {
+            return url.endsWith(";") ? "" : ";";
+        }
+        if (startsWithIgnoreCase(url, "jdbc:teradata:")) {
+            return url.endsWith(",") ? "" : ",";
+        }
+        if (usesColonProperties(url)) {
+            if (url.endsWith(":") || url.endsWith(";")) {
+                return "";
+            }
+            return hasColonProperties(url) ? ";" : ":";
+        }
+        return url.contains("?") ? "&" : "?";
+    }
+
+    private static boolean usesColonProperties(String url) {
+        return startsWithIgnoreCase(url, "jdbc:db2:") || startsWithIgnoreCase(url, "jdbc:informix-sqli:");
+    }
+
+    private static boolean hasColonProperties(String url) {
+        int schemeEnd = url.indexOf("://");
+        if (schemeEnd < 0) {
+            return false;
+        }
+        int pathStart = url.indexOf('/', schemeEnd + 3);
+        if (pathStart < 0) {
+            return false;
+        }
+        return url.indexOf(':', pathStart + 1) >= 0;
+    }
+
+    private static boolean startsWithIgnoreCase(String value, String prefix) {
+        return value.regionMatches(true, 0, prefix, 0, prefix.length());
     }
 }

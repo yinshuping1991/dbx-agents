@@ -318,8 +318,24 @@ public final class Db2Agent extends BaseDatabaseAgent {
         });
     }
 
-    private static String buildUrl(ConnectParams params) {
-        return "jdbc:db2://" + params.getHost() + ":" + params.getPort() + "/" + params.getDatabase();
+    static String buildUrl(ConnectParams params) {
+        if (!params.getConnection_string().trim().isEmpty()) {
+            return params.getConnection_string();
+        }
+        String url = "jdbc:db2://" + params.getHost() + ":" + params.getPort() + "/" + params.getDatabase();
+        String extraParams = trimDb2UrlParams(params.getUrl_params());
+        if (extraParams.isEmpty()) {
+            return url;
+        }
+        return url + ":" + extraParams + (extraParams.endsWith(";") ? "" : ";");
+    }
+
+    private static String trimDb2UrlParams(String urlParams) {
+        String value = urlParams == null ? "" : urlParams.trim();
+        while (value.startsWith("?") || value.startsWith("&") || value.startsWith(":") || value.startsWith(";")) {
+            value = value.substring(1);
+        }
+        return value;
     }
 
     private static String formatDataType(String typeName, Integer length, Integer scale) {

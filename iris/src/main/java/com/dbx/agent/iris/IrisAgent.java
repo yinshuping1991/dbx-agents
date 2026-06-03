@@ -8,7 +8,8 @@ public final class IrisAgent extends ConfiguredJdbcAgent {
     public static final JdbcAgentProfile IRIS_PROFILE = new JdbcAgentProfile(
         "com.intersystems.jdbc.IRISDriver",
         "jdbc:IRIS://{host}:{port}/{database}",
-        1972
+        1972,
+        true
     );
 
     public IrisAgent() {
