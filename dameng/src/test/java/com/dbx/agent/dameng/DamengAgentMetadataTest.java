@@ -1,6 +1,8 @@
 package com.dbx.agent.dameng;
 
 import com.dbx.agent.ColumnInfo;
+import com.dbx.agent.ObjectInfo;
+import com.dbx.agent.TableInfo;
 import com.dbx.agent.test.JdbcMetadataSqlFake;
 import com.dbx.agent.test.TestSupport;
 import org.junit.jupiter.api.Assertions;
@@ -27,6 +29,46 @@ class DamengAgentMetadataTest {
             .findFirst()
             .orElseThrow();
         Assertions.assertTrue(columnsSql.contains("LEFT JOIN ALL_COL_COMMENTS"), columnsSql);
+    }
+
+    @Test
+    void usesTableCommentsMetadataQuery() {
+        DamengAgent agent = new DamengAgent();
+        TestSupport.setPrivateConnection(agent, JdbcMetadataSqlFake.connection());
+
+        agent.listTables("APP");
+
+        String tablesSql = JdbcMetadataSqlFake.statements.stream()
+            .filter(sql -> sql.contains("ALL_TAB_COMMENTS"))
+            .findFirst()
+            .orElseThrow();
+        Assertions.assertTrue(tablesSql.contains("COMMENTS"), tablesSql);
+        Assertions.assertFalse(tablesSql.contains("ALL_TABLES"), tablesSql);
+        Assertions.assertFalse(tablesSql.contains("ALL_VIEWS"), tablesSql);
+    }
+
+    @Test
+    void mapsTableCommentFromMetadata() {
+        DamengAgent agent = new DamengAgent();
+        TestSupport.setPrivateConnection(agent, metadataConnection());
+
+        List<TableInfo> tables = agent.listTables("APP");
+
+        Assertions.assertEquals(1, tables.size());
+        Assertions.assertEquals("USERS", tables.get(0).getName());
+        Assertions.assertEquals("用户示例表", tables.get(0).getComment());
+    }
+
+    @Test
+    void mapsTableCommentToObjectMetadata() {
+        DamengAgent agent = new DamengAgent();
+        TestSupport.setPrivateConnection(agent, metadataConnection());
+
+        List<ObjectInfo> objects = agent.listObjects("APP");
+
+        Assertions.assertEquals(1, objects.size());
+        Assertions.assertEquals("USERS", objects.get(0).getName());
+        Assertions.assertEquals("用户示例表", objects.get(0).getComment());
     }
 
     @Test
@@ -62,6 +104,12 @@ class DamengAgentMetadataTest {
                 String sql = (String) args[0];
                 if (sql.contains("ALL_CONS_COLUMNS")) {
                     return metadataStatement(List.of(List.of("ID")));
+                }
+                if (sql.contains("ALL_TAB_COMMENTS")) {
+                    return metadataStatement(List.of(List.of("USERS", "TABLE", "用户示例表")));
+                }
+                if (sql.contains("ALL_OBJECTS")) {
+                    return metadataStatement(List.of());
                 }
                 if (sql.contains("ALL_TAB_COLUMNS")) {
                     return metadataStatement(List.of(List.of(

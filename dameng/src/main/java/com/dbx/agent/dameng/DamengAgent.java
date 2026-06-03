@@ -103,9 +103,13 @@ public final class DamengAgent extends BaseDatabaseAgent {
         return unchecked(() -> {
             List<TableInfo> result = new ArrayList<>();
             String sql = """
-                SELECT TABLE_NAME, 'TABLE' AS TABLE_TYPE FROM ALL_TABLES WHERE OWNER = ?
+                SELECT TABLE_NAME, 'TABLE' AS TABLE_TYPE, COMMENTS
+                FROM ALL_TAB_COMMENTS
+                WHERE OWNER = ? AND TABLE_TYPE = 'TABLE'
                 UNION ALL
-                SELECT VIEW_NAME, 'VIEW' FROM ALL_VIEWS WHERE OWNER = ?
+                SELECT TABLE_NAME, 'VIEW' AS TABLE_TYPE, COMMENTS
+                FROM ALL_TAB_COMMENTS
+                WHERE OWNER = ? AND TABLE_TYPE = 'VIEW'
                 ORDER BY 1
                 """.stripIndent().trim();
             try (PreparedStatement stmt = requireConnected().prepareStatement(sql)) {
@@ -113,7 +117,7 @@ public final class DamengAgent extends BaseDatabaseAgent {
                 stmt.setString(2, schema);
                 try (ResultSet rs = stmt.executeQuery()) {
                     while (rs.next()) {
-                        result.add(new TableInfo(rs.getString(1), rs.getString(2), null));
+                        result.add(new TableInfo(rs.getString(1), rs.getString(2), rs.getString(3)));
                     }
                 }
             }
@@ -125,10 +129,13 @@ public final class DamengAgent extends BaseDatabaseAgent {
     public List<ObjectInfo> listObjects(String schema) {
         return unchecked(() -> {
             List<ObjectInfo> result = new ArrayList<>();
+            for (TableInfo table : listTables(schema)) {
+                result.add(new ObjectInfo(table.getName(), table.getTable_type(), schema, table.getComment()));
+            }
             String sql = """
                 SELECT OBJECT_NAME, OBJECT_TYPE FROM ALL_OBJECTS
-                WHERE OWNER = ? AND OBJECT_TYPE IN ('TABLE', 'VIEW', 'PROCEDURE', 'FUNCTION')
-                ORDER BY CASE OBJECT_TYPE WHEN 'TABLE' THEN 0 WHEN 'VIEW' THEN 1 WHEN 'PROCEDURE' THEN 2 ELSE 3 END, OBJECT_NAME
+                WHERE OWNER = ? AND OBJECT_TYPE IN ('PROCEDURE', 'FUNCTION')
+                ORDER BY CASE OBJECT_TYPE WHEN 'PROCEDURE' THEN 0 ELSE 1 END, OBJECT_NAME
                 """.stripIndent().trim();
             try (PreparedStatement stmt = requireConnected().prepareStatement(sql)) {
                 stmt.setString(1, schema);
