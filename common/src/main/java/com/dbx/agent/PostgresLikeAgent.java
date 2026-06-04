@@ -9,6 +9,7 @@ import java.util.Set;
 
 public abstract class PostgresLikeAgent extends AbstractJdbcAgent {
     private final PostgresLikeAgentProfile profile;
+    private boolean mysqlCompatMode = false;
 
     protected PostgresLikeAgent(PostgresLikeAgentProfile profile) {
         this.profile = profile;
@@ -16,6 +17,20 @@ public abstract class PostgresLikeAgent extends AbstractJdbcAgent {
 
     public PostgresLikeAgentProfile getProfile() {
         return profile;
+    }
+
+    public void setMysqlCompatMode(boolean mysqlCompatMode) {
+        this.mysqlCompatMode = mysqlCompatMode;
+    }
+
+    public boolean isMysqlCompatMode() {
+        return mysqlCompatMode;
+    }
+
+    private String quoteIdentifier(String identifier) {
+        return mysqlCompatMode
+            ? JdbcIdentifiers.INSTANCE.backtick(identifier)
+            : JdbcIdentifiers.INSTANCE.doubleQuote(identifier);
     }
 
     @Override
@@ -135,7 +150,7 @@ public abstract class PostgresLikeAgent extends AbstractJdbcAgent {
             foreignKeys = Collections.emptyList();
         }
 
-        return DatabaseAgent.buildTableDdl(schema, table, getColumns(schema, table), indexes, foreignKeys);
+        return DdlBuilder.buildTableDdl(schema, table, getColumns(schema, table), indexes, foreignKeys, mysqlCompatMode);
     }
 
     @Override
@@ -373,7 +388,7 @@ public abstract class PostgresLikeAgent extends AbstractJdbcAgent {
 
     @Override
     public String setSchemaSQL(String schema) {
-        return "SET search_path TO " + JdbcIdentifiers.INSTANCE.doubleQuote(schema);
+        return "SET search_path TO " + quoteIdentifier(schema);
     }
 
     private java.sql.Connection requireConnection() {
@@ -390,8 +405,8 @@ public abstract class PostgresLikeAgent extends AbstractJdbcAgent {
         return value == null ? "" : value;
     }
 
-    private static String quoteQualifiedIdentifier(String schema, String name) {
-        return JdbcIdentifiers.INSTANCE.doubleQuote(schema) + "." + JdbcIdentifiers.INSTANCE.doubleQuote(name);
+    private String quoteQualifiedIdentifier(String schema, String name) {
+        return quoteIdentifier(schema) + "." + quoteIdentifier(name);
     }
 
     private static Integer intObject(ResultSet rs, String column) throws Exception {

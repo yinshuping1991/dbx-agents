@@ -10,9 +10,10 @@ public final class ConnectParams {
     private String password;
     private String url_params;
     private String connection_string;
+    private boolean mysql_compat_mode;
 
     public ConnectParams() {
-        this("", 0, "", "", "", "", "");
+        this("", 0, "", "", "", "", "", false);
     }
 
     public ConnectParams(
@@ -22,7 +23,8 @@ public final class ConnectParams {
         String username,
         String password,
         String url_params,
-        String connection_string
+        String connection_string,
+        boolean mysql_compat_mode
     ) {
         this.host = host;
         this.port = port;
@@ -31,6 +33,7 @@ public final class ConnectParams {
         this.password = password;
         this.url_params = url_params;
         this.connection_string = connection_string;
+        this.mysql_compat_mode = mysql_compat_mode;
     }
 
     public String getHost() {
@@ -89,6 +92,14 @@ public final class ConnectParams {
         this.connection_string = connection_string;
     }
 
+    public boolean isMysql_compat_mode() {
+        return mysql_compat_mode;
+    }
+
+    public void setMysql_compat_mode(boolean mysql_compat_mode) {
+        this.mysql_compat_mode = mysql_compat_mode;
+    }
+
     @Override
     public boolean equals(Object other) {
         if (this == other) return true;
@@ -100,12 +111,13 @@ public final class ConnectParams {
             && Objects.equals(username, that.username)
             && Objects.equals(password, that.password)
             && Objects.equals(url_params, that.url_params)
-            && Objects.equals(connection_string, that.connection_string);
+            && Objects.equals(connection_string, that.connection_string)
+            && mysql_compat_mode == that.mysql_compat_mode;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(host, port, database, username, password, url_params, connection_string);
+        return Objects.hash(host, port, database, username, password, url_params, connection_string, mysql_compat_mode);
     }
 
     @Override
@@ -117,6 +129,7 @@ public final class ConnectParams {
             + ", password=" + password
             + ", url_params=" + url_params
             + ", connection_string=" + connection_string
+            + ", mysql_compat_mode=" + mysql_compat_mode
             + ")";
     }
 }

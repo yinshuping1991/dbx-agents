@@ -15,12 +15,23 @@ public final class DdlBuilder {
         List<IndexInfo> indexes,
         List<ForeignKeyInfo> foreignKeys
     ) {
-        String tableRef = qualifiedName(schema, table);
+        return buildTableDdl(schema, table, columns, indexes, foreignKeys, false);
+    }
+
+    public static String buildTableDdl(
+        String schema,
+        String table,
+        List<ColumnInfo> columns,
+        List<IndexInfo> indexes,
+        List<ForeignKeyInfo> foreignKeys,
+        boolean useBacktick
+    ) {
+        String tableRef = qualifiedName(schema, table, useBacktick);
         List<String> columnLines = new ArrayList<>();
         for (ColumnInfo column : columns) {
             StringBuilder line = new StringBuilder();
             line.append("  ");
-            line.append(quoteIdent(column.getName()));
+            line.append(quoteIdent(column.getName(), useBacktick));
             line.append(" ");
             line.append(columnTypeSql(column));
             if (!column.getIs_nullable()) {
@@ -36,7 +47,7 @@ public final class DdlBuilder {
         List<String> primaryKeys = new ArrayList<>();
         for (ColumnInfo column : columns) {
             if (column.getIs_primary_key()) {
-                primaryKeys.add(quoteIdent(column.getName()));
+                primaryKeys.add(quoteIdent(column.getName(), useBacktick));
             }
         }
         if (!primaryKeys.isEmpty()) {
@@ -45,9 +56,9 @@ public final class DdlBuilder {
 
         for (ForeignKeyInfo fk : foreignKeys) {
             columnLines.add(
-                "  CONSTRAINT " + quoteIdent(fk.getName())
-                    + " FOREIGN KEY (" + quoteIdent(fk.getColumn()) + ") "
-                    + "REFERENCES " + quoteIdent(fk.getRef_table()) + "(" + quoteIdent(fk.getRef_column()) + ")"
+                "  CONSTRAINT " + quoteIdent(fk.getName(), useBacktick)
+                    + " FOREIGN KEY (" + quoteIdent(fk.getColumn(), useBacktick) + ") "
+                    + "REFERENCES " + quoteIdent(fk.getRef_table(), useBacktick) + "(" + quoteIdent(fk.getRef_column(), useBacktick) + ")"
             );
         }
 
@@ -66,13 +77,13 @@ public final class DdlBuilder {
             String using = notBlank(index.getIndex_type()) ? " USING " + index.getIndex_type() : "";
             List<String> quotedColumns = new ArrayList<>();
             for (String column : index.getColumns()) {
-                quotedColumns.add(quoteIdent(column));
+                quotedColumns.add(quoteIdent(column, useBacktick));
             }
             String filter = notBlank(index.getFilter()) ? " WHERE " + index.getFilter() : "";
             ddl.append("\nCREATE ");
             ddl.append(unique);
             ddl.append("INDEX ");
-            ddl.append(quoteIdent(index.getName()));
+            ddl.append(quoteIdent(index.getName(), useBacktick));
             ddl.append(" ON ");
             ddl.append(tableRef);
             ddl.append(using);
@@ -84,10 +95,10 @@ public final class DdlBuilder {
             if (notBlank(index.getComment())) {
                 ddl.append("\nCOMMENT ON INDEX ");
                 if (notBlank(schema)) {
-                    ddl.append(quoteIdent(schema));
+                    ddl.append(quoteIdent(schema, useBacktick));
                     ddl.append(".");
                 }
-                ddl.append(quoteIdent(index.getName()));
+                ddl.append(quoteIdent(index.getName(), useBacktick));
                 ddl.append(" IS '");
                 ddl.append(index.getComment().replace("'", "''"));
                 ddl.append("';");
@@ -97,15 +108,17 @@ public final class DdlBuilder {
         return ddl.toString();
     }
 
-    private static String quoteIdent(String identifier) {
-        return JdbcIdentifiers.INSTANCE.doubleQuote(identifier);
+    private static String quoteIdent(String identifier, boolean useBacktick) {
+        return useBacktick
+            ? JdbcIdentifiers.INSTANCE.backtick(identifier)
+            : JdbcIdentifiers.INSTANCE.doubleQuote(identifier);
     }
 
-    private static String qualifiedName(String schema, String name) {
+    private static String qualifiedName(String schema, String name, boolean useBacktick) {
         if (!notBlank(schema)) {
-            return quoteIdent(name);
+            return quoteIdent(name, useBacktick);
         }
-        return quoteIdent(schema) + "." + quoteIdent(name);
+        return quoteIdent(schema, useBacktick) + "." + quoteIdent(name, useBacktick);
     }
 
     private static String columnTypeSql(ColumnInfo column) {

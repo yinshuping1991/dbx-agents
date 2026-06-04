@@ -32,6 +32,7 @@ import java.util.Locale;
 import java.util.Set;
 
 public final class DamengAgent extends BaseDatabaseAgent {
+    private static final String AGENT_VERSION = "9999.06.04.1-fix-default";
     private static final Set<String> SYSTEM_USERS = Set.of(
         "SYS", "SYSAUDITOR", "SYSSSO", "CTISYS",
         "SYS_DBA", "_SYS_STATISTICS", "SYS_PHM"
@@ -210,8 +211,11 @@ public final class DamengAgent extends BaseDatabaseAgent {
             }
 
             List<ColumnInfo> result = new ArrayList<>();
+            // DATA_DEFAULT is a LONG column — it must be selected first and read first
+            // in JDBC, otherwise the data is truncated.
             String colSql = """
-                SELECT c.COLUMN_NAME,
+                SELECT c.DATA_DEFAULT,
+                    c.COLUMN_NAME,
                     c.DATA_TYPE,
                     c.NULLABLE,
                     c.DATA_PRECISION,
@@ -232,6 +236,8 @@ public final class DamengAgent extends BaseDatabaseAgent {
                 stmt.setString(2, table);
                 try (ResultSet rs = stmt.executeQuery()) {
                     while (rs.next()) {
+                        // DATA_DEFAULT is a LONG — must be read first, before all other columns.
+                        String dataDefault = readLongColumn(rs, "DATA_DEFAULT");
                         String name = rs.getString("COLUMN_NAME");
                         String baseType = rs.getString("DATA_TYPE");
                         Integer numPrec = intObject(rs, "DATA_PRECISION");
@@ -244,7 +250,7 @@ public final class DamengAgent extends BaseDatabaseAgent {
                             name,
                             dataType,
                             "Y".equals(rs.getString("NULLABLE")),
-                            null,
+                            dataDefault,
                             pkColumns.contains(name),
                             null,
                             rs.getString("COMMENTS"),
@@ -468,6 +474,31 @@ public final class DamengAgent extends BaseDatabaseAgent {
     private static Integer intObject(ResultSet rs, String column) throws Exception {
         Object value = rs.getObject(column);
         return value == null ? null : ((Number) value).intValue();
+    }
+
+    // DATA_DEFAULT is stored as a LONG column in Oracle/Dameng. JDBC requires LONG
+    // columns to be read before other columns. We also try getCharacterStream as a
+    // fallback because some drivers don't support getString on LONG columns.
+    private static String readLongColumn(ResultSet rs, String column) throws Exception {
+        try {
+            String value = rs.getString(column);
+            if (value != null) {
+                return value;
+            }
+        } catch (Exception ignored) {
+        }
+        try (java.io.Reader reader = rs.getCharacterStream(column)) {
+            if (reader == null) {
+                return null;
+            }
+            StringBuilder sb = new StringBuilder();
+            char[] buf = new char[4096];
+            int n;
+            while ((n = reader.read(buf)) != -1) {
+                sb.append(buf, 0, n);
+            }
+            return sb.toString();
+        }
     }
 
     private static List<String> splitNonEmpty(String value, String delimiter) {
