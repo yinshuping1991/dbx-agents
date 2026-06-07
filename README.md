@@ -40,6 +40,7 @@ Each agent runs as a standalone JVM process and communicates with DBX via stdin/
 | tdengine | TDengine | taos-jdbcdriver (WebSocket) |
 | yashandb | 崖山 YashanDB | YashanDB JDBC |
 | xugu | 虚谷 XuguDB | XuguDB JDBC |
+| iotdb | Apache IoTDB | IoTDB JDBC |
 
 ## Multi-JRE Support
 
