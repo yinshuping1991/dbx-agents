@@ -301,7 +301,7 @@ jobs:
           {
             "jres": {
               "21": {
-                "version": "21.0.11",
+                "version": "21.0.12",
                 "platforms": {
           ${JRE21_PLATFORMS}
                 }
@@ -409,15 +409,10 @@ jobs:
           done
           echo "Drivers: $UPLOADED uploaded, $SKIPPED skipped"
 
-          # Upload JRE only if not already present on R2
+          # Upload JRE — always overwrite to ensure latest modules
           for f in release/dbx-jre-*.tar.gz; do
             [ ! -f "$f" ] && continue
             key="agents/jre/$(basename $f)"
-            if aws s3api head-object --bucket "${{ secrets.R2_BUCKET_NAME }}" --key "$key" \
-                --endpoint-url "$R2_ENDPOINT" >/dev/null 2>&1; then
-              echo "Skip $(basename $f) (already on R2)"
-            else
-              aws s3 cp "$f" "$R2_BUCKET/$key" --endpoint-url "$R2_ENDPOINT"
-              echo "Uploaded $(basename $f)"
-            fi
+            aws s3 cp "$f" "$R2_BUCKET/$key" --endpoint-url "$R2_ENDPOINT"
+            echo "Uploaded $(basename $f)"
           done
