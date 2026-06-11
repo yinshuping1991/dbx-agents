@@ -1,9 +1,14 @@
 package com.dbx.agent;
 
+import java.net.URL;
+import java.net.URLClassLoader;
+import java.nio.file.Paths;
 import java.sql.Connection;
+import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Types;
+import java.util.ArrayList;
 import java.util.List;
 
 public abstract class AbstractJdbcAgent extends BaseDatabaseAgent {
@@ -18,7 +23,7 @@ public abstract class AbstractJdbcAgent extends BaseDatabaseAgent {
     @Override
     public final void connect(ConnectParams params) {
         uncheckedVoid(() -> {
-            Class.forName(driverClass());
+            loadDriver(params);
             connection = openConnection(params);
             configuredDatabase = params.getDatabase();
             afterConnect(params, connection);
@@ -28,11 +33,73 @@ public abstract class AbstractJdbcAgent extends BaseDatabaseAgent {
     @Override
     public final boolean testConnection(ConnectParams params) {
         return unchecked(() -> {
-            Class.forName(driverClass());
+            loadDriver(params);
             try (Connection conn = openConnection(params)) {
                 return conn.isValid(5);
             }
         });
+    }
+
+    private void loadDriver(ConnectParams params) throws Exception {
+        List<String> driverPaths = params.getJdbc_driver_paths();
+        String driverClass = params.getJdbc_driver_class();
+        if (driverClass == null || driverClass.isEmpty()) {
+            driverClass = driverClass();
+        }
+        if (driverPaths != null && !driverPaths.isEmpty()) {
+            List<URL> urls = new ArrayList<>();
+            for (String path : driverPaths) {
+                urls.add(Paths.get(path).toUri().toURL());
+            }
+            URLClassLoader loader = new URLClassLoader(urls.toArray(new URL[0]), getClass().getClassLoader());
+            Driver driver = (Driver) Class.forName(driverClass, true, loader).getDeclaredConstructor().newInstance();
+            DriverManager.registerDriver(new DriverShim(driver));
+        } else {
+            Class.forName(driverClass);
+        }
+    }
+
+    private static final class DriverShim implements Driver {
+        private final Driver driver;
+
+        DriverShim(Driver driver) {
+            this.driver = driver;
+        }
+
+        @Override
+        public Connection connect(String url, java.util.Properties info) throws java.sql.SQLException {
+            return driver.connect(url, info);
+        }
+
+        @Override
+        public boolean acceptsURL(String url) throws java.sql.SQLException {
+            return driver.acceptsURL(url);
+        }
+
+        @Override
+        public java.sql.DriverPropertyInfo[] getPropertyInfo(String url, java.util.Properties info) throws java.sql.SQLException {
+            return driver.getPropertyInfo(url, info);
+        }
+
+        @Override
+        public int getMajorVersion() {
+            return driver.getMajorVersion();
+        }
+
+        @Override
+        public int getMinorVersion() {
+            return driver.getMinorVersion();
+        }
+
+        @Override
+        public boolean jdbcCompliant() {
+            return driver.jdbcCompliant();
+        }
+
+        @Override
+        public java.util.logging.Logger getParentLogger() throws java.sql.SQLFeatureNotSupportedException {
+            return driver.getParentLogger();
+        }
     }
 
     @Override
