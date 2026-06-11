@@ -80,7 +80,7 @@ public final class Db2Agent extends BaseDatabaseAgent {
     public List<String> listSchemas() {
         return unchecked(() -> {
             List<String> result = new ArrayList<>();
-            String sql = "SELECT SCHEMANAME FROM SYSCAT.SCHEMATA WHERE OWNERTYPE = 'U' ORDER BY SCHEMANAME";
+            String sql = "SELECT SCHEMANAME FROM SYSCAT.SCHEMATA ORDER BY SCHEMANAME";
             try (java.sql.Statement stmt = requireConnected().createStatement();
                  ResultSet rs = stmt.executeQuery(sql)) {
                 while (rs.next()) {
