@@ -481,12 +481,38 @@ public final class JdbcExecutor {
         );
     }
 
-    private static String trimSql(String sql) {
-        String trimmed = sql.trim();
+    static String trimSql(String sql) {
+        String trimmed = stripTrailingSlashDelimiter(sql.trim());
+        if (isPlSqlBlock(trimmed)) {
+            return trimmed;
+        }
         while (trimmed.endsWith(";")) {
             trimmed = trimmed.substring(0, trimmed.length() - 1).trim();
         }
         return trimmed;
+    }
+
+    private static String stripTrailingSlashDelimiter(String sql) {
+        String trimmed = sql.trim();
+        if (!trimmed.endsWith("/")) {
+            return trimmed;
+        }
+        int slashStart = trimmed.length() - 1;
+        int lineStart = trimmed.lastIndexOf('\n', slashStart - 1) + 1;
+        if (!trimmed.substring(lineStart, slashStart).trim().isEmpty()) {
+            return trimmed;
+        }
+        String beforeSlash = trimmed.substring(0, lineStart).trim();
+        return isPlSqlBlock(beforeSlash) ? beforeSlash : trimmed;
+    }
+
+    private static boolean isPlSqlBlock(String sql) {
+        String upperSql = sql.toUpperCase(Locale.ROOT).trim();
+        if (!upperSql.startsWith("DECLARE") && !upperSql.startsWith("BEGIN")) {
+            return false;
+        }
+        return upperSql.matches("(?s).*\\bEND\\s+(?!IF\\b|LOOP\\b|CASE\\b)[A-Z0-9_$#]+\\s*;\\s*$")
+            || upperSql.matches("(?s).*\\bEND\\s*;\\s*$");
     }
 
     private static <T> T unchecked(ThrowingSupplier<T> supplier) {

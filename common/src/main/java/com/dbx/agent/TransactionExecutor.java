@@ -64,7 +64,7 @@ public final class TransactionExecutor {
         long totalAffected = 0;
         for (String statement : statements) {
             try (Statement stmt = conn.createStatement()) {
-                totalAffected += runner.run(stmt, trimSql(statement));
+                totalAffected += runner.run(stmt, JdbcExecutor.trimSql(statement));
             }
         }
         return totalAffected;
@@ -99,14 +99,6 @@ public final class TransactionExecutor {
             System.currentTimeMillis() - start,
             false
         );
-    }
-
-    private static String trimSql(String sql) {
-        String trimmed = sql.trim();
-        while (trimmed.endsWith(";")) {
-            trimmed = trimmed.substring(0, trimmed.length() - 1).trim();
-        }
-        return trimmed;
     }
 
     private static <T> T unchecked(ThrowingSupplier<T> supplier) {

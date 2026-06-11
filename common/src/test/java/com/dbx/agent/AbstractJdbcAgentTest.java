@@ -71,6 +71,17 @@ class AbstractJdbcAgentTest {
     }
 
     @Test
+    void preservesPlSqlBlockTerminatorDuringQueryExecution() {
+        TrackingConnection tracking = new TrackingConnection();
+        TestAgent agent = new TestAgent(tracking);
+        agent.connect(new ConnectParams());
+
+        agent.executeQuery("BEGIN\n  NULL;\nEND;\n/", null, new ExecuteQueryOptions());
+
+        assertEquals(Arrays.asList("setMaxRows:10001", "execute:BEGIN\n  NULL;\nEND;"), tracking.calls);
+    }
+
+    @Test
     void delegatesTransactionsThroughSharedFoundation() {
         TrackingConnection tracking = new TrackingConnection();
         TestAgent agent = new TestAgent(tracking);
@@ -85,6 +96,25 @@ class AbstractJdbcAgentTest {
                 "execute:USE APP",
                 "executeUpdate:UPDATE A",
                 "executeUpdate:UPDATE B",
+                "commit",
+                "setAutoCommit:true"
+            ),
+            tracking.calls
+        );
+    }
+
+    @Test
+    void preservesPlSqlBlockTerminatorDuringTransactionExecution() {
+        TrackingConnection tracking = new TrackingConnection();
+        TestAgent agent = new TestAgent(tracking);
+        agent.connect(new ConnectParams());
+
+        agent.executeTransaction(Collections.singletonList("DECLARE\n  v NUMBER;\nBEGIN\n  NULL;\nEND;"), null);
+
+        assertEquals(
+            Arrays.asList(
+                "setAutoCommit:false",
+                "executeUpdate:DECLARE\n  v NUMBER;\nBEGIN\n  NULL;\nEND;",
                 "commit",
                 "setAutoCommit:true"
             ),
