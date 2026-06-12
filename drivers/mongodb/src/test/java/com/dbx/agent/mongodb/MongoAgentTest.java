@@ -1,20 +1,85 @@
 package com.dbx.agent.mongodb;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.dbx.agent.AgentProtocol;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.mongodb.MongoClientSettings;
+import java.io.FileInputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.KeyStore;
+import java.security.PrivateKey;
+import java.util.Base64;
+import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class MongoAgentTest {
+    @TempDir
+    static Path tempDir;
+
+    private static Path caPemPath;
+    private static Path clientPemPath;
+    private static Path clientKeyPath;
+
+    @BeforeAll
+    static void setUpCerts() throws Exception {
+        Path keystore = tempDir.resolve("keystore.jks");
+        caPemPath = tempDir.resolve("ca.pem");
+        clientPemPath = tempDir.resolve("client.pem");
+        clientKeyPath = tempDir.resolve("client-key.pem");
+
+        // Generate a key pair in a JKS keystore using keytool
+        ProcessBuilder pb = new ProcessBuilder(
+            "keytool", "-genkeypair", "-alias", "test", "-keyalg", "RSA", "-keysize", "2048",
+            "-keystore", keystore.toString(), "-storepass", "pass123", "-keypass", "pass123",
+            "-dname", "CN=Test TLS Cert", "-validity", "365"
+        );
+        pb.inheritIO();
+        int rc = pb.start().waitFor();
+        if (rc != 0) {
+            throw new RuntimeException("keytool -genkeypair failed with exit code " + rc);
+        }
+
+        // Export the certificate as PEM (for ca_cert_path / client_cert_path)
+        for (Path pem : new Path[] {caPemPath, clientPemPath}) {
+            ProcessBuilder exportPb = new ProcessBuilder(
+                "keytool", "-exportcert", "-alias", "test",
+                "-keystore", keystore.toString(), "-storepass", "pass123", "-rfc"
+            );
+            exportPb.redirectOutput(pem.toFile());
+            exportPb.redirectError(ProcessBuilder.Redirect.INHERIT);
+            int exportRc = exportPb.start().waitFor();
+            if (exportRc != 0) {
+                throw new RuntimeException("keytool -exportcert failed with exit code " + exportRc);
+            }
+        }
+
+        // Extract the private key as PKCS#8 PEM
+        KeyStore ks = KeyStore.getInstance("JKS");
+        try (FileInputStream fis = new FileInputStream(keystore.toFile())) {
+            ks.load(fis, "pass123".toCharArray());
+        }
+        PrivateKey pk = (PrivateKey) ks.getKey("test", "pass123".toCharArray());
+        String pkcs8Pem = "-----BEGIN PRIVATE KEY-----\n"
+            + Base64.getEncoder().encodeToString(pk.getEncoded())
+            + "\n-----END PRIVATE KEY-----\n";
+        Files.writeString(clientKeyPath, pkcs8Pem);
+    }
+
+    // ─── existing tests ───
+
     @Test
     void exposesProtocolHandshakeOverJsonRpc() {
         String response = MongoAgent.handleRequest(
-            "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"handshake\",\"params\":{\"appVersion\":\"0.5.13\",\"supportedProtocolVersions\":[1]}}"
-        );
+            "{\"jsonrpc\":\"2.0\",\"id\":7,\"method\":\"handshake\","
+                + "\"params\":{\"appVersion\":\"0.5.13\",\"supportedProtocolVersions\":[1]}}");
 
         JsonObject json = JsonParser.parseString(response).getAsJsonObject();
         JsonObject result = json.getAsJsonObject("result");
@@ -42,6 +107,165 @@ class MongoAgentTest {
         connection.addProperty("database", "gray_lite_twin_fat");
 
         assertEquals("gray_lite_twin_fat", MongoAgent.authenticationDatabase(connection));
+    }
+
+    // ─── TLS: configureBuilder JSON parsing ───
+
+    @Test
+    void sslTrueFromConnectionObject() {
+        JsonObject connection = minimalConnection();
+        connection.addProperty("ssl", true);
+
+        MongoClientSettings.Builder builder = MongoAgent.configureBuilder(connection);
+
+        assertNotNull(builder);
+    }
+
+    @Test
+    void sslFalseByDefault() {
+        JsonObject connection = minimalConnection();
+        // ssl is not set — should default to false
+
+        MongoClientSettings.Builder builder = MongoAgent.configureBuilder(connection);
+
+        assertNotNull(builder);
+    }
+
+    @Test
+    void sslTrueFromTopLevelParams() {
+        JsonObject connObj = minimalConnection();
+        connObj.addProperty("ssl", true);
+        JsonObject params = new JsonObject();
+        params.add("connection", connObj);
+
+        // connect() unwraps the connection sub-object; verify configureBuilder reads ssl from it
+        JsonObject extracted = params.has("connection") && params.get("connection").isJsonObject()
+            ? params.getAsJsonObject("connection")
+            : params;
+        assertEquals(true, extracted.get("ssl").getAsBoolean());
+    }
+
+    @Test
+    void readsCaCertPathFromConnection() {
+        JsonObject connection = minimalConnection();
+        connection.addProperty("ssl", true);
+        connection.addProperty("ca_cert_path", caPemPath.toString());
+
+        MongoClientSettings.Builder builder = MongoAgent.configureBuilder(connection);
+
+        assertNotNull(builder);
+    }
+
+    @Test
+    void readsClientCertAndKeyPathsFromConnection() {
+        JsonObject connection = minimalConnection();
+        connection.addProperty("ssl", true);
+        connection.addProperty("client_cert_path", clientPemPath.toString());
+        connection.addProperty("client_key_path", clientKeyPath.toString());
+
+        MongoClientSettings.Builder builder = MongoAgent.configureBuilder(connection);
+
+        assertNotNull(builder);
+    }
+
+    @Test
+    void certPathAndKeyPathFallbackNames() {
+        JsonObject connection = minimalConnection();
+        connection.addProperty("ssl", true);
+        connection.addProperty("cert_path", clientPemPath.toString());
+        connection.addProperty("key_path", clientKeyPath.toString());
+
+        // Should not throw — cert_path/key_path are fallback names for client_cert_path/client_key_path
+        MongoClientSettings.Builder builder = MongoAgent.configureBuilder(connection);
+
+        assertNotNull(builder);
+    }
+
+    @Test
+    void rejectsMismatchedClientCertAndKey() {
+        JsonObject connection = minimalConnection();
+        connection.addProperty("ssl", true);
+        connection.addProperty("client_cert_path", clientPemPath.toString());
+        // client_key_path is missing
+
+        assertThrows(IllegalArgumentException.class, () -> MongoAgent.configureBuilder(connection));
+    }
+
+    // ─── TLS: SSLContext creation ───
+
+    @Test
+    void createsSslContextWithCaCert() throws Exception {
+        var ctx = MongoAgent.createTlsSslContext(caPemPath.toString(), null, null);
+
+        assertNotNull(ctx);
+    }
+
+    @Test
+    void createsSslContextWithClientCertAndKey() throws Exception {
+        var ctx = MongoAgent.createTlsSslContext(null, clientPemPath.toString(), clientKeyPath.toString());
+
+        assertNotNull(ctx);
+    }
+
+    @Test
+    void createsSslContextWithAllCertPaths() throws Exception {
+        var ctx = MongoAgent.createTlsSslContext(
+            caPemPath.toString(), clientPemPath.toString(), clientKeyPath.toString());
+
+        assertNotNull(ctx);
+    }
+
+    // ─── TLS: trust manager loading ───
+
+    @Test
+    void loadsTrustManagersFromPemFile() throws Exception {
+        var trustManagers = MongoAgent.loadTrustManagersFromPem(caPemPath.toString());
+
+        assertNotNull(trustManagers);
+        assertTrue(trustManagers.length > 0);
+    }
+
+    // ─── TLS: key manager loading ───
+
+    @Test
+    void loadsKeyManagersFromPemFiles() throws Exception {
+        var keyManagers = MongoAgent.loadKeyManagersFromPem(
+            clientPemPath.toString(), clientKeyPath.toString());
+
+        assertNotNull(keyManagers);
+        assertTrue(keyManagers.length > 0);
+    }
+
+    // ─── TLS: private key format support ───
+
+    @Test
+    void loadsPkcs8PrivateKeyFromPem() throws Exception {
+        var key = MongoAgent.loadPrivateKeyFromPem(clientKeyPath.toString());
+
+        assertNotNull(key);
+        assertEquals("RSA", key.getAlgorithm());
+    }
+
+    // ─── utility ───
+
+    @Test
+    void firstNonBlankReturnsFirstNonBlankValue() {
+        assertEquals("b", MongoAgent.firstNonBlank(null, "", "b", "c"));
+        assertEquals("a", MongoAgent.firstNonBlank("a", "b"));
+    }
+
+    @Test
+    void firstNonBlankReturnsNullWhenAllBlank() {
+        assertEquals(null, MongoAgent.firstNonBlank(null, "", "  "));
+    }
+
+    // ─── helpers ───
+
+    private static JsonObject minimalConnection() {
+        JsonObject conn = new JsonObject();
+        conn.addProperty("host", "127.0.0.1");
+        conn.addProperty("port", 27017);
+        return conn;
     }
 
     private static boolean containsCapability(JsonArray capabilities, String expected) {

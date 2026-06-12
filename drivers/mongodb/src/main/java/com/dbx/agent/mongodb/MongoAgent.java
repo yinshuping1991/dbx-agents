@@ -13,17 +13,35 @@ import com.mongodb.ServerAddress;
 import com.mongodb.client.MongoClient;
 import com.mongodb.client.MongoClients;
 import java.io.BufferedReader;
+import java.io.FileInputStream;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.security.KeyFactory;
+import java.security.KeyStore;
+import java.security.PrivateKey;
+import java.security.SecureRandom;
+import java.security.cert.Certificate;
+import java.security.cert.CertificateFactory;
+import java.security.spec.PKCS8EncodedKeySpec;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import javax.net.ssl.KeyManager;
+import javax.net.ssl.KeyManagerFactory;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.TrustManagerFactory;
 import org.bson.Document;
 import org.bson.types.ObjectId;
 
@@ -41,27 +59,49 @@ public final class MongoAgent {
         return element == null || element instanceof JsonNull ? null : element.getAsString();
     }
 
-    private static Object connect(JsonObject params) {
-        JsonObject connObj = params.has("connection") && params.get("connection").isJsonObject()
-            ? params.getAsJsonObject("connection")
-            : params;
+    static MongoClientSettings.Builder configureBuilder(JsonObject connObj) {
         String host = connObj.has("host") ? connObj.get("host").getAsString() : "127.0.0.1";
         int port = connObj.has("port") ? connObj.get("port").getAsInt() : 27017;
         String username = coalesce(stringOrNull(connObj, "username"));
         String password = coalesce(stringOrNull(connObj, "password"));
-        String database = defaultString(stringOrNull(connObj, "database"), "admin");
         String authDatabase = authenticationDatabase(connObj);
         String connectionString = stringOrNull(connObj, "connection_string");
+        boolean ssl = connObj.has("ssl") && !connObj.get("ssl").isJsonNull() && connObj.get("ssl").getAsBoolean();
+        String caCertPath = stringOrNull(connObj, "ca_cert_path");
+        String clientCertPath = firstNonBlank(
+            stringOrNull(connObj, "client_cert_path"), stringOrNull(connObj, "cert_path"));
+        String clientKeyPath = firstNonBlank(
+            stringOrNull(connObj, "client_key_path"), stringOrNull(connObj, "key_path"));
+
+        if ((clientCertPath == null) != (clientKeyPath == null)) {
+            throw new IllegalArgumentException("Client certificate and key must be provided together");
+        }
 
         MongoClientSettings.Builder builder = MongoClientSettings.builder();
         if (connectionString != null && !connectionString.isBlank()) {
             builder.applyConnectionString(new ConnectionString(connectionString));
         } else {
-            builder.applyToClusterSettings(settings -> settings.hosts(Collections.singletonList(new ServerAddress(host, port))));
+            builder.applyToClusterSettings(
+                settings -> settings.hosts(Collections.singletonList(new ServerAddress(host, port))));
             if (!username.isBlank()) {
                 builder.credential(MongoCredential.createCredential(username, authDatabase, password.toCharArray()));
             }
         }
+
+        if (ssl) {
+            applyTlsSettings(builder, caCertPath, clientCertPath, clientKeyPath);
+        }
+
+        return builder;
+    }
+
+    private static Object connect(JsonObject params) {
+        JsonObject connObj = params.has("connection") && params.get("connection").isJsonObject()
+            ? params.getAsJsonObject("connection")
+            : params;
+        String database = defaultString(stringOrNull(connObj, "database"), "admin");
+
+        MongoClientSettings.Builder builder = configureBuilder(connObj);
 
         if (client != null) {
             client.close();
@@ -69,6 +109,145 @@ public final class MongoAgent {
         client = MongoClients.create(builder.build());
         client.getDatabase(database).runCommand(new Document("ping", 1));
         return Collections.singletonMap("ok", true);
+    }
+
+    private static void applyTlsSettings(MongoClientSettings.Builder builder,
+        String caCertPath, String clientCertPath, String clientKeyPath) {
+        builder.applyToSslSettings(sslBuilder -> {
+            sslBuilder.enabled(true);
+            if (caCertPath != null && !caCertPath.isBlank()
+                || clientCertPath != null && !clientCertPath.isBlank()) {
+                try {
+                    sslBuilder.context(createTlsSslContext(caCertPath, clientCertPath, clientKeyPath));
+                } catch (Exception e) {
+                    throw new RuntimeException("Failed to configure TLS: " + e.getMessage(), e);
+                }
+            }
+        });
+    }
+
+    static SSLContext createTlsSslContext(String caCertPath, String clientCertPath, String clientKeyPath)
+        throws Exception {
+        TrustManager[] trustManagers = null;
+        if (caCertPath != null && !caCertPath.isBlank()) {
+            trustManagers = loadTrustManagersFromPem(caCertPath);
+        }
+
+        KeyManager[] keyManagers = null;
+        if (clientCertPath != null && !clientCertPath.isBlank()
+            && clientKeyPath != null && !clientKeyPath.isBlank()) {
+            keyManagers = loadKeyManagersFromPem(clientCertPath, clientKeyPath);
+        }
+
+        SSLContext ctx = SSLContext.getInstance("TLS");
+        ctx.init(keyManagers, trustManagers, new SecureRandom());
+        return ctx;
+    }
+
+    static TrustManager[] loadTrustManagersFromPem(String caCertPath) throws Exception {
+        CertificateFactory cf = CertificateFactory.getInstance("X.509");
+        KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
+        trustStore.load(null, null);
+        int i = 0;
+        try (InputStream is = new FileInputStream(caCertPath)) {
+            for (Certificate cert : (Collection<? extends Certificate>) cf.generateCertificates(is)) {
+                trustStore.setCertificateEntry("ca-" + i, cert);
+                i++;
+            }
+        }
+        TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
+        tmf.init(trustStore);
+        return tmf.getTrustManagers();
+    }
+
+    static KeyManager[] loadKeyManagersFromPem(String certPath, String keyPath) throws Exception {
+        CertificateFactory cf = CertificateFactory.getInstance("X.509");
+        Certificate cert;
+        try (InputStream is = new FileInputStream(certPath)) {
+            cert = cf.generateCertificate(is);
+        }
+
+        PrivateKey key = loadPrivateKeyFromPem(keyPath);
+
+        KeyStore keyStore = KeyStore.getInstance(KeyStore.getDefaultType());
+        keyStore.load(null, null);
+        keyStore.setCertificateEntry("client", cert);
+        keyStore.setKeyEntry("client", key, new char[0], new Certificate[] {cert});
+
+        KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
+        kmf.init(keyStore, new char[0]);
+        return kmf.getKeyManagers();
+    }
+
+    static PrivateKey loadPrivateKeyFromPem(String keyPath) throws Exception {
+        String content = new String(Files.readAllBytes(Paths.get(keyPath)), StandardCharsets.UTF_8);
+        content = content.replace("-----BEGIN PRIVATE KEY-----", "")
+            .replace("-----END PRIVATE KEY-----", "")
+            .replace("-----BEGIN RSA PRIVATE KEY-----", "")
+            .replace("-----END RSA PRIVATE KEY-----", "")
+            .replace("-----BEGIN EC PRIVATE KEY-----", "")
+            .replace("-----END EC PRIVATE KEY-----", "");
+        byte[] keyBytes = Base64.getDecoder().decode(content.replaceAll("\\s", ""));
+
+        // PKCS#8 (standard format, "-----BEGIN PRIVATE KEY-----")
+        try {
+            return KeyFactory.getInstance("RSA").generatePrivate(new PKCS8EncodedKeySpec(keyBytes));
+        } catch (Exception e) {
+            // ignore — try next format
+        }
+        try {
+            return KeyFactory.getInstance("EC").generatePrivate(new PKCS8EncodedKeySpec(keyBytes));
+        } catch (Exception e) {
+            // ignore — try next format
+        }
+
+        // PKCS#1 RSA — add PKCS#8 AlgorithmIdentifier prefix
+        // The prefix is: SEQUENCE { INTEGER 0, SEQUENCE { OID 1.2.840.113549.1.1.1, NULL }, OCTET STRING }
+        try {
+            byte[] pkcs8Header = {
+                0x30, (byte) 0x82, 0, 0,  // SEQUENCE (length filled in below)
+                0x02, 0x01, 0x00,          // INTEGER 0
+                0x30, 0x0d,                // SEQUENCE (AlgorithmIdentifier)
+                0x06, 0x09, 0x2a, (byte) 0x86, 0x48, (byte) 0x86, (byte) 0xf7, 0x0d, 0x01, 0x01, 0x01,  // OID 1.2.840.113549.1.1.1
+                0x05, 0x00,                // NULL
+                0x04                       // OCTET STRING (length filled in below)
+            };
+            int totalLen = pkcs8Header.length + keyBytes.length - 4;  // subtract placeholder SEQUENCE length
+            pkcs8Header[2] = (byte) ((totalLen >> 8) & 0xff);
+            pkcs8Header[3] = (byte) (totalLen & 0xff);
+            // OCTET STRING length
+            int octetLen = keyBytes.length;
+            byte[] octetLenBytes;
+            if (octetLen < 128) {
+                octetLenBytes = new byte[] {(byte) octetLen};
+            } else if (octetLen < 256) {
+                octetLenBytes = new byte[] {(byte) 0x81, (byte) octetLen};
+            } else {
+                octetLenBytes = new byte[] {(byte) 0x82, (byte) (octetLen >> 8), (byte) (octetLen & 0xff)};
+            }
+            byte[] pkcs8Key = new byte[pkcs8Header.length + octetLenBytes.length - 1 + keyBytes.length];
+            int pos = 0;
+            System.arraycopy(pkcs8Header, 0, pkcs8Key, pos, pkcs8Header.length - 1);  // exclude placeholder OCTET STRING length
+            pos += pkcs8Header.length - 1;
+            System.arraycopy(octetLenBytes, 0, pkcs8Key, pos, octetLenBytes.length);
+            pos += octetLenBytes.length;
+            System.arraycopy(keyBytes, 0, pkcs8Key, pos, keyBytes.length);
+            return KeyFactory.getInstance("RSA").generatePrivate(new PKCS8EncodedKeySpec(pkcs8Key));
+        } catch (Exception e) {
+            throw new IllegalArgumentException(
+                "Unsupported private key format in " + keyPath
+                    + ". Use PKCS#8 (-----BEGIN PRIVATE KEY-----) or PKCS#1 RSA (-----BEGIN RSA PRIVATE KEY-----).",
+                e);
+        }
+    }
+
+    static String firstNonBlank(String... values) {
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
     }
 
     static String authenticationDatabase(JsonObject connObj) {

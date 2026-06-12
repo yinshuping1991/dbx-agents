@@ -182,6 +182,9 @@ public final class TrinoAgent extends AbstractJdbcAgent {
     }
 
     private static String buildUrl(ConnectParams params) {
+        if (params.getConnection_string() != null && !params.getConnection_string().isBlank()) {
+            return params.getConnection_string();
+        }
         return "jdbc:trino://" + params.getHost() + ":" + params.getPort() + "/" + params.getDatabase();
     }
 

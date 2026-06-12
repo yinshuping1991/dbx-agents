@@ -15,6 +15,10 @@ public final class ConnectParams {
     private boolean mysql_compat_mode;
     private String jdbc_driver_class;
     private List<String> jdbc_driver_paths;
+    private boolean ssl;
+    private String ca_cert_path;
+    private String client_cert_path;
+    private String client_key_path;
 
     public ConnectParams() {
         this("", 0, "", "", "", "", "", false, "", Collections.emptyList());
@@ -137,6 +141,38 @@ public final class ConnectParams {
         this.jdbc_driver_paths = jdbc_driver_paths;
     }
 
+    public boolean isSsl() {
+        return ssl;
+    }
+
+    public void setSsl(boolean ssl) {
+        this.ssl = ssl;
+    }
+
+    public String getCa_cert_path() {
+        return ca_cert_path;
+    }
+
+    public void setCa_cert_path(String ca_cert_path) {
+        this.ca_cert_path = ca_cert_path;
+    }
+
+    public String getClient_cert_path() {
+        return client_cert_path;
+    }
+
+    public void setClient_cert_path(String client_cert_path) {
+        this.client_cert_path = client_cert_path;
+    }
+
+    public String getClient_key_path() {
+        return client_key_path;
+    }
+
+    public void setClient_key_path(String client_key_path) {
+        this.client_key_path = client_key_path;
+    }
+
     @Override
     public boolean equals(Object other) {
         if (this == other) return true;
@@ -151,12 +187,17 @@ public final class ConnectParams {
             && Objects.equals(connection_string, that.connection_string)
             && mysql_compat_mode == that.mysql_compat_mode
             && Objects.equals(jdbc_driver_class, that.jdbc_driver_class)
-            && Objects.equals(jdbc_driver_paths, that.jdbc_driver_paths);
+            && Objects.equals(jdbc_driver_paths, that.jdbc_driver_paths)
+            && ssl == that.ssl
+            && Objects.equals(ca_cert_path, that.ca_cert_path)
+            && Objects.equals(client_cert_path, that.client_cert_path)
+            && Objects.equals(client_key_path, that.client_key_path);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(host, port, database, username, password, url_params, connection_string, mysql_compat_mode, jdbc_driver_class, jdbc_driver_paths);
+        return Objects.hash(host, port, database, username, password, url_params, connection_string,
+            mysql_compat_mode, jdbc_driver_class, jdbc_driver_paths, ssl, ca_cert_path, client_cert_path, client_key_path);
     }
 
     @Override
@@ -171,6 +212,10 @@ public final class ConnectParams {
             + ", mysql_compat_mode=" + mysql_compat_mode
             + ", jdbc_driver_class=" + jdbc_driver_class
             + ", jdbc_driver_paths=" + jdbc_driver_paths
+            + ", ssl=" + ssl
+            + ", ca_cert_path=" + ca_cert_path
+            + ", client_cert_path=" + client_cert_path
+            + ", client_key_path=" + client_key_path
             + ")";
     }
 }
