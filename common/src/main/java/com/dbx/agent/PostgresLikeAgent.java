@@ -251,7 +251,7 @@ public abstract class PostgresLikeAgent extends AbstractJdbcAgent {
                 "FROM pg_catalog.pg_constraint co " +
                 "JOIN pg_catalog.pg_class c ON c.oid = co.conrelid " +
                 "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace " +
-                "CROSS JOIN LATERAL unnest(co.conkey) WITH ORDINALITY AS key(attnum, ord) " +
+                "JOIN LATERAL (SELECT unnest(co.conkey) AS attnum, generate_series(1, array_length(co.conkey, 1)) AS ord) AS key ON true " +
                 "JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum = key.attnum " +
                 "WHERE co.contype = 'p' " +
                 "AND n.nspname = ? " +
@@ -282,7 +282,7 @@ public abstract class PostgresLikeAgent extends AbstractJdbcAgent {
                 "JOIN pg_class i ON i.oid = ix.indexrelid " +
                 "JOIN pg_namespace n ON n.oid = t.relnamespace " +
                 "JOIN pg_am am ON am.oid = i.relam " +
-                "CROSS JOIN LATERAL unnest(ix.indkey) WITH ORDINALITY AS k(attnum, n) " +
+                "JOIN LATERAL (SELECT unnest(ix.indkey) AS attnum, generate_series(1, array_length(ix.indkey, 1)) AS n) AS k ON true " +
                 "JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = k.attnum " +
                 "WHERE n.nspname = ? AND t.relname = ? " +
                 "GROUP BY i.relname, am.amname, ix.indisunique, ix.indisprimary " +
@@ -326,9 +326,9 @@ public abstract class PostgresLikeAgent extends AbstractJdbcAgent {
                 "JOIN pg_catalog.pg_class c ON c.oid = co.conrelid " +
                 "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace " +
                 "JOIN pg_catalog.pg_class rc ON rc.oid = co.confrelid " +
-                "CROSS JOIN LATERAL unnest(co.conkey) WITH ORDINALITY AS fk(attnum, ord) " +
+                "JOIN LATERAL (SELECT unnest(co.conkey) AS attnum, generate_series(1, array_length(co.conkey, 1)) AS ord) AS fk ON true " +
                 "JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum = fk.attnum " +
-                "JOIN LATERAL unnest(co.confkey) WITH ORDINALITY AS pk(attnum, ord) ON pk.ord = fk.ord " +
+                "JOIN LATERAL (SELECT unnest(co.confkey) AS attnum, generate_series(1, array_length(co.confkey, 1)) AS ord) AS pk ON pk.ord = fk.ord " +
                 "JOIN pg_catalog.pg_attribute ra ON ra.attrelid = rc.oid AND ra.attnum = pk.attnum " +
                 "WHERE co.contype = 'f' " +
                 "AND n.nspname = ? " +
