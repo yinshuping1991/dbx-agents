@@ -10,11 +10,14 @@ import com.dbx.agent.JdbcIdentifiers;
 import com.dbx.agent.JsonRpcServer;
 import com.dbx.agent.TableInfo;
 import com.dbx.agent.TriggerInfo;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 
 public final class HiveAgent extends AbstractJdbcAgent {
 
@@ -71,30 +74,11 @@ public final class HiveAgent extends AbstractJdbcAgent {
     @Override
     public List<ColumnInfo> getColumns(String schema, String table) {
         return unchecked(() -> {
-            List<ColumnInfo> result = new ArrayList<>();
-            useSchema(schema);
-            try (java.sql.Statement stmt = requireConnected().createStatement();
-                 ResultSet rs = stmt.executeQuery("DESCRIBE " + JdbcIdentifiers.INSTANCE.backtick(table))) {
-                while (rs.next()) {
-                    String colName = trimToNull(rs.getString(1));
-                    if (colName == null || colName.startsWith("#")) {
-                        continue;
-                    }
-                    result.add(new ColumnInfo(
-                        colName,
-                        trimToEmpty(rs.getString(2)),
-                        true,
-                        null,
-                        false,
-                        null,
-                        optionalComment(rs),
-                        null,
-                        null,
-                        null
-                    ));
-                }
+            try {
+                return getColumnsFromDescribe(schema, table);
+            } catch (Exception ignored) {
+                return getColumnsFromMetadata(requireConnected(), schema, table);
             }
-            return result;
         });
     }
 
@@ -132,6 +116,59 @@ public final class HiveAgent extends AbstractJdbcAgent {
         }
     }
 
+    private List<ColumnInfo> getColumnsFromDescribe(String schema, String table) throws Exception {
+        List<ColumnInfo> result = new ArrayList<>();
+        useSchema(schema);
+        try (java.sql.Statement stmt = requireConnected().createStatement();
+             ResultSet rs = stmt.executeQuery("DESCRIBE " + JdbcIdentifiers.INSTANCE.backtick(table))) {
+            while (rs.next()) {
+                String colName = trimToNull(rs.getString(1));
+                if (colName == null || colName.startsWith("#")) {
+                    continue;
+                }
+                result.add(new ColumnInfo(
+                    colName,
+                    trimToEmpty(rs.getString(2)),
+                    true,
+                    null,
+                    false,
+                    null,
+                    optionalComment(rs),
+                    null,
+                    null,
+                    null
+                ));
+            }
+        }
+        return result;
+    }
+
+    private static List<ColumnInfo> getColumnsFromMetadata(Connection conn, String schema, String table) throws Exception {
+        List<ColumnInfo> result = new ArrayList<>();
+        DatabaseMetaData meta = conn.getMetaData();
+        try (ResultSet rs = meta.getColumns(null, trimToNull(schema), table, "%")) {
+            while (rs.next()) {
+                String name = rs.getString("COLUMN_NAME");
+                if (trimToNull(name) == null) {
+                    continue;
+                }
+                result.add(new ColumnInfo(
+                    name,
+                    trimToEmpty(rs.getString("TYPE_NAME")),
+                    rs.getInt("NULLABLE") != DatabaseMetaData.columnNoNulls,
+                    rs.getString("COLUMN_DEF"),
+                    false,
+                    null,
+                    rs.getString("REMARKS"),
+                    intOrNull(rs, "COLUMN_SIZE"),
+                    intOrNull(rs, "DECIMAL_DIGITS"),
+                    characterLength(rs)
+                ));
+            }
+        }
+        return result;
+    }
+
     private static String buildUrl(ConnectParams params) {
         return "jdbc:hive2://" + params.getHost() + ":" + params.getPort() + "/" + params.getDatabase();
     }
@@ -146,6 +183,23 @@ public final class HiveAgent extends AbstractJdbcAgent {
 
     private static String trimToEmpty(String value) {
         return value == null ? "" : value.trim();
+    }
+
+    private static Integer intOrNull(ResultSet rs, String column) throws Exception {
+        Object value = rs.getObject(column);
+        return value instanceof Number ? ((Number) value).intValue() : null;
+    }
+
+    private static Integer characterLength(ResultSet rs) throws Exception {
+        String typeName = rs.getString("TYPE_NAME");
+        if (typeName == null) {
+            return null;
+        }
+        String normalized = typeName.toLowerCase(Locale.ROOT);
+        if (!normalized.contains("char") && !normalized.contains("text") && !normalized.contains("string")) {
+            return null;
+        }
+        return intOrNull(rs, "COLUMN_SIZE");
     }
 
     private static String optionalComment(ResultSet rs) {
