@@ -68,6 +68,25 @@ class CommonJavaCompatibilityTest {
     }
 
     @Test
+    void jsonRpcServerReconnectsWhenStoredJdbcConnectionIsStale() {
+        ReconnectingAgent agent = new ReconnectingAgent();
+        JsonRpcServer server = new JsonRpcServer(agent);
+
+        server.handleRequest(
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"connect\",\"params\":{\"host\":\"db.example.com\",\"port\":1521,\"database\":\"ORCL\",\"username\":\"u\",\"password\":\"p\"}}"
+        );
+        String response = server.handleRequest(
+            "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"list_databases\",\"params\":{}}"
+        );
+
+        JsonObject json = JsonParser.parseString(response).getAsJsonObject();
+        assertTrue(json.has("result"));
+        assertEquals(2, agent.connectCount);
+        assertEquals(1, agent.disconnectCount);
+        assertEquals(1, agent.firstConnectionValidChecks);
+    }
+
+    @Test
     void exposesJavaFriendlyDefaultsAndModels() {
         ConnectParams params = new ConnectParams("localhost", 5432, "demo", "user", "secret", "ssl=false", "", false);
         assertEquals("localhost", params.getHost());
@@ -236,6 +255,46 @@ class CommonJavaCompatibilityTest {
 
         private TransactionAgent(Connection connection) {
             this.connection = connection;
+        }
+
+        @Override
+        public Connection getConnection() {
+            return connection;
+        }
+    }
+
+    private static final class ReconnectingAgent extends MinimalAgent {
+        private int connectCount;
+        private int disconnectCount;
+        private int firstConnectionValidChecks;
+        private Connection connection;
+
+        @Override
+        public void connect(ConnectParams params) {
+            connectCount += 1;
+            final int connectionNumber = connectCount;
+            connection = proxy(Connection.class, (method, args) -> {
+                String name = method.getName();
+                if ("isClosed".equals(name)) {
+                    return false;
+                }
+                if ("isValid".equals(name)) {
+                    if (connectionNumber == 1) {
+                        firstConnectionValidChecks += 1;
+                        return false;
+                    }
+                    return true;
+                }
+                if ("close".equals(name)) {
+                    return null;
+                }
+                return defaultValue(method.getReturnType());
+            });
+        }
+
+        @Override
+        public void disconnect() {
+            disconnectCount += 1;
         }
 
         @Override

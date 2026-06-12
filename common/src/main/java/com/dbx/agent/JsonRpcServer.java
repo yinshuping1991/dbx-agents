@@ -10,12 +10,14 @@ import com.google.gson.reflect.TypeToken;
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
 import java.lang.reflect.Type;
+import java.sql.Connection;
 import java.util.Collections;
 import java.util.List;
 
 public final class JsonRpcServer {
     private final DatabaseAgent agent;
     private final Gson gson = new Gson();
+    private ConnectParams lastConnectParams;
 
     public JsonRpcServer(DatabaseAgent agent) {
         this.agent = agent;
@@ -69,7 +71,8 @@ public final class JsonRpcServer {
             return AgentProtocol.handshakeResult();
         }
         if (AgentProtocol.METHOD_CONNECT.equals(method)) {
-            agent.connect(gson.fromJson(params, ConnectParams.class));
+            lastConnectParams = gson.fromJson(params, ConnectParams.class);
+            agent.connect(lastConnectParams);
             return Collections.singletonMap("ok", true);
         }
         if (AgentProtocol.METHOD_TEST_CONNECTION.equals(method)) {
@@ -78,6 +81,7 @@ public final class JsonRpcServer {
             }
             return Collections.singletonMap("ok", true);
         }
+        ensureLiveConnection(method);
         if (AgentProtocol.METHOD_LIST_DATABASES.equals(method)) {
             return agent.listDatabases();
         }
@@ -167,15 +171,52 @@ public final class JsonRpcServer {
         if (AgentProtocol.METHOD_DISCONNECT.equals(method)) {
             JdbcExecutor.INSTANCE.closeAllQuerySessions();
             agent.disconnect();
+            lastConnectParams = null;
             return Collections.singletonMap("ok", true);
         }
         if (AgentProtocol.METHOD_SHUTDOWN.equals(method)) {
             JdbcExecutor.INSTANCE.closeAllQuerySessions();
             agent.disconnect();
+            lastConnectParams = null;
             System.exit(0);
             return Collections.singletonMap("ok", true);
         }
         throw new IllegalArgumentException("Unknown method: " + method);
+    }
+
+    private void ensureLiveConnection(String method) {
+        if (lastConnectParams == null || !shouldValidateConnection(method)) {
+            return;
+        }
+        Connection conn = agent.getConnection();
+        if (conn == null) {
+            return;
+        }
+        boolean valid = false;
+        try {
+            valid = !conn.isClosed() && conn.isValid(2);
+        } catch (Exception ignored) {
+        }
+        if (valid) {
+            return;
+        }
+
+        JdbcExecutor.INSTANCE.closeAllQuerySessions();
+        try {
+            agent.disconnect();
+        } catch (Exception ignored) {
+        }
+        agent.connect(lastConnectParams);
+    }
+
+    private static boolean shouldValidateConnection(String method) {
+        return !AgentProtocol.METHOD_HANDSHAKE.equals(method)
+            && !AgentProtocol.METHOD_CONNECT.equals(method)
+            && !AgentProtocol.METHOD_TEST_CONNECTION.equals(method)
+            && !AgentProtocol.METHOD_FETCH_QUERY_PAGE.equals(method)
+            && !AgentProtocol.METHOD_CLOSE_QUERY_SESSION.equals(method)
+            && !AgentProtocol.METHOD_DISCONNECT.equals(method)
+            && !AgentProtocol.METHOD_SHUTDOWN.equals(method);
     }
 
     private static JsonObject paramsObject(JsonObject req) {
