@@ -87,6 +87,21 @@ class CommonJavaCompatibilityTest {
     }
 
     @Test
+    void jsonRpcServerSwitchesCatalogBeforeMetadataCalls() {
+        CatalogSwitchAgent agent = new CatalogSwitchAgent();
+        JsonRpcServer server = new JsonRpcServer(agent);
+
+        String response = server.handleRequest(
+            "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"" + AgentProtocol.METHOD_LIST_TABLES + "\",\"params\":{\"database\":\"sales\",\"schema\":\"app\"}}"
+        );
+
+        JsonObject json = JsonParser.parseString(response).getAsJsonObject();
+        assertTrue(json.has("result"));
+        assertEquals("sales", agent.catalogs.get(0));
+        assertEquals("app", agent.lastSchema);
+    }
+
+    @Test
     void exposesJavaFriendlyDefaultsAndModels() {
         ConnectParams params = new ConnectParams("localhost", 5432, "demo", "user", "secret", "ssl=false", "", false);
         assertEquals("localhost", params.getHost());
@@ -300,6 +315,28 @@ class CommonJavaCompatibilityTest {
         @Override
         public Connection getConnection() {
             return connection;
+        }
+    }
+
+    private static final class CatalogSwitchAgent extends MinimalAgent {
+        private final List<String> catalogs = new ArrayList<>();
+        private String lastSchema = "";
+
+        @Override
+        public Connection getConnection() {
+            return proxy(Connection.class, (method, args) -> {
+                if ("setCatalog".equals(method.getName())) {
+                    catalogs.add(String.valueOf(args[0]));
+                    return null;
+                }
+                return defaultValue(method.getReturnType());
+            });
+        }
+
+        @Override
+        public List<TableInfo> listTables(String schema) {
+            lastSchema = schema;
+            return super.listTables(schema);
         }
     }
 

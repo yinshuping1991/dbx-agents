@@ -19,6 +19,7 @@ public final class ConnectParams {
     private String ca_cert_path;
     private String client_cert_path;
     private String client_key_path;
+    private String gbase_server;
 
     public ConnectParams() {
         this("", 0, "", "", "", "", "", false, "", Collections.emptyList());
@@ -173,6 +174,14 @@ public final class ConnectParams {
         this.client_key_path = client_key_path;
     }
 
+    public String getGbase_server() {
+        return gbase_server;
+    }
+
+    public void setGbase_server(String gbase_server) {
+        this.gbase_server = gbase_server;
+    }
+
     @Override
     public boolean equals(Object other) {
         if (this == other) return true;
@@ -191,13 +200,14 @@ public final class ConnectParams {
             && ssl == that.ssl
             && Objects.equals(ca_cert_path, that.ca_cert_path)
             && Objects.equals(client_cert_path, that.client_cert_path)
-            && Objects.equals(client_key_path, that.client_key_path);
+            && Objects.equals(client_key_path, that.client_key_path)
+            && Objects.equals(gbase_server, that.gbase_server);
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(host, port, database, username, password, url_params, connection_string,
-            mysql_compat_mode, jdbc_driver_class, jdbc_driver_paths, ssl, ca_cert_path, client_cert_path, client_key_path);
+            mysql_compat_mode, jdbc_driver_class, jdbc_driver_paths, ssl, ca_cert_path, client_cert_path, client_key_path, gbase_server);
     }
 
     @Override
@@ -216,6 +226,7 @@ public final class ConnectParams {
             + ", ca_cert_path=" + ca_cert_path
             + ", client_cert_path=" + client_cert_path
             + ", client_key_path=" + client_key_path
+            + ", gbase_server=" + gbase_server
             + ")";
     }
 }

@@ -12,6 +12,7 @@ class Gbase8sAgentTest {
         Assertions.assertEquals("com.gbasedbt.jdbc.Driver", agent.getProfile().getDriverClass());
         Assertions.assertEquals("jdbc:gbasedbt-sqli://{host}:{port}/{database}:GBASEDBTSERVER=gbase8s", agent.getProfile().getUrlTemplate());
         Assertions.assertEquals(9088, agent.getProfile().getDefaultPort());
+        Assertions.assertTrue(agent.getProfile().getSkipExecutionContext());
     }
 
     @Test

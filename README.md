@@ -21,7 +21,7 @@ Each agent runs as a standalone process and communicates with DBX via stdin/stdo
 | firebird | Firebird | Jaybird JDBC |
 | exasol | Exasol | Exasol JDBC |
 | oceanbase-oracle | OceanBase Oracle Mode | OceanBase JDBC |
-| gbase | GBase | External GBase JDBC |
+| gbase8a | GBase 8a | External GBase 8a JDBC |
 | gbase8s | GBase 8s | External GBase 8s JDBC |
 | oracle | Oracle 10g+ | go-ora native agent |
 | oracle-legacy | Oracle 11g/12c/18c/19c | ojdbc8 (compatibility fallback) |

@@ -15,9 +15,12 @@ import java.util.Collections;
 import java.util.List;
 
 public final class JsonRpcServer {
+    private static final long CONNECTION_VALIDATION_INTERVAL_MILLIS = 5_000L;
+
     private final DatabaseAgent agent;
     private final Gson gson = new Gson();
     private ConnectParams lastConnectParams;
+    private long lastConnectionValidationTimeMillis;
 
     public JsonRpcServer(DatabaseAgent agent) {
         this.agent = agent;
@@ -73,6 +76,7 @@ public final class JsonRpcServer {
         if (AgentProtocol.METHOD_CONNECT.equals(method)) {
             lastConnectParams = gson.fromJson(params, ConnectParams.class);
             agent.connect(lastConnectParams);
+            lastConnectionValidationTimeMillis = 0L;
             return Collections.singletonMap("ok", true);
         }
         if (AgentProtocol.METHOD_TEST_CONNECTION.equals(method)) {
@@ -86,19 +90,19 @@ public final class JsonRpcServer {
             return agent.listDatabases();
         }
         if (AgentProtocol.METHOD_LIST_SCHEMAS.equals(method)) {
-            String database = stringOrNull(params, "database");
-            if (database != null && !database.trim().isEmpty() && agent.getConnection() != null) {
-                agent.getConnection().setCatalog(database);
-            }
+            switchCatalog(params);
             return agent.listSchemas();
         }
         if (AgentProtocol.METHOD_LIST_TABLES.equals(method)) {
+            switchCatalog(params);
             return agent.listTables(params.get("schema").getAsString());
         }
         if (AgentProtocol.METHOD_LIST_OBJECTS.equals(method)) {
+            switchCatalog(params);
             return agent.listObjects(params.get("schema").getAsString());
         }
         if (AgentProtocol.METHOD_GET_OBJECT_SOURCE.equals(method)) {
+            switchCatalog(params);
             return agent.getObjectSource(
                 params.get("schema").getAsString(),
                 params.get("name").getAsString(),
@@ -106,18 +110,23 @@ public final class JsonRpcServer {
             );
         }
         if (AgentProtocol.METHOD_GET_TABLE_DDL.equals(method)) {
+            switchCatalog(params);
             return agent.getTableDdl(params.get("schema").getAsString(), params.get("table").getAsString());
         }
         if (AgentProtocol.METHOD_GET_COLUMNS.equals(method)) {
+            switchCatalog(params);
             return agent.getColumns(params.get("schema").getAsString(), params.get("table").getAsString());
         }
         if (AgentProtocol.METHOD_LIST_INDEXES.equals(method)) {
+            switchCatalog(params);
             return agent.listIndexes(params.get("schema").getAsString(), params.get("table").getAsString());
         }
         if (AgentProtocol.METHOD_LIST_FOREIGN_KEYS.equals(method)) {
+            switchCatalog(params);
             return agent.listForeignKeys(params.get("schema").getAsString(), params.get("table").getAsString());
         }
         if (AgentProtocol.METHOD_LIST_TRIGGERS.equals(method)) {
+            switchCatalog(params);
             return agent.listTriggers(params.get("schema").getAsString(), params.get("table").getAsString());
         }
         if (AgentProtocol.METHOD_EXECUTE_QUERY.equals(method)) {
@@ -184,6 +193,20 @@ public final class JsonRpcServer {
         throw new IllegalArgumentException("Unknown method: " + method);
     }
 
+    private void switchCatalog(JsonObject params) throws Exception {
+        String database = stringOrNull(params, "database");
+        if (database != null && !database.trim().isEmpty() && agent.getConnection() != null) {
+            String currentCatalog = null;
+            try {
+                currentCatalog = agent.getConnection().getCatalog();
+            } catch (Exception ignored) {
+            }
+            if (currentCatalog == null || !currentCatalog.trim().equalsIgnoreCase(database.trim())) {
+                agent.getConnection().setCatalog(database);
+            }
+        }
+    }
+
     private void ensureLiveConnection(String method) {
         if (lastConnectParams == null || !shouldValidateConnection(method)) {
             return;
@@ -192,12 +215,18 @@ public final class JsonRpcServer {
         if (conn == null) {
             return;
         }
+        long now = System.currentTimeMillis();
+        if (lastConnectionValidationTimeMillis > 0
+            && now - lastConnectionValidationTimeMillis < CONNECTION_VALIDATION_INTERVAL_MILLIS) {
+            return;
+        }
         boolean valid = false;
         try {
             valid = !conn.isClosed() && conn.isValid(2);
         } catch (Exception ignored) {
         }
         if (valid) {
+            lastConnectionValidationTimeMillis = now;
             return;
         }
 
@@ -207,6 +236,7 @@ public final class JsonRpcServer {
         } catch (Exception ignored) {
         }
         agent.connect(lastConnectParams);
+        lastConnectionValidationTimeMillis = System.currentTimeMillis();
     }
 
     private static boolean shouldValidateConnection(String method) {
