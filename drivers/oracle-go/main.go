@@ -394,14 +394,8 @@ func buildDSN(params connectParams) string {
 		if jdbc.Descriptor != "" {
 			return go_ora.BuildJDBC(params.Username, params.Password, jdbc.Descriptor, options)
 		}
-		host := params.Host
-		if host == "" {
-			host = jdbc.Host
-		}
-		port := params.Port
-		if port == 0 {
-			port = jdbc.Port
-		}
+		host := jdbc.Host
+		port := jdbc.Port
 		if port == 0 {
 			port = 1521
 		}

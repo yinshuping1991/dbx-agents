@@ -77,7 +77,7 @@ func TestBuildDSNUsesConnectionStringWhenProvided(t *testing.T) {
 	}
 }
 
-func TestBuildDSNIgnoresDBXGeneratedJdbcConnectionString(t *testing.T) {
+func TestBuildDSNUsesJdbcServiceHostAndPort(t *testing.T) {
 	dsn := buildDSN(connectParams{
 		Host:             "127.0.0.1",
 		Port:             11521,
@@ -90,12 +90,30 @@ func TestBuildDSNIgnoresDBXGeneratedJdbcConnectionString(t *testing.T) {
 	if strings.Contains(strings.ToLower(dsn), "jdbc:") {
 		t.Fatalf("dsn should be go-ora format, got: %s", dsn)
 	}
-	if !strings.Contains(dsn, "127.0.0.1:11521") || !strings.Contains(dsn, "ORCLPDB1") {
-		t.Fatalf("dsn should use forwarded host/port/database fields, got: %s", dsn)
+	if !strings.Contains(dsn, "oracle.example.com:1521") || !strings.Contains(dsn, "ORCLPDB1") {
+		t.Fatalf("dsn should use JDBC host/port/database fields, got: %s", dsn)
 	}
 }
 
-func TestBuildDSNConvertsDBXGeneratedJdbcSID(t *testing.T) {
+func TestBuildDSNUsesRewrittenJdbcServiceHostAndPort(t *testing.T) {
+	dsn := buildDSN(connectParams{
+		Host:             "127.0.0.1",
+		Port:             11521,
+		Database:         "ORCLPDB1",
+		Username:         "scott",
+		Password:         "tiger",
+		ConnectionString: "jdbc:oracle:thin:@//127.0.0.1:11521/ORCLPDB1",
+	})
+
+	if strings.Contains(strings.ToLower(dsn), "jdbc:") {
+		t.Fatalf("dsn should be go-ora format, got: %s", dsn)
+	}
+	if !strings.Contains(dsn, "127.0.0.1:11521") || !strings.Contains(dsn, "ORCLPDB1") {
+		t.Fatalf("dsn should use rewritten JDBC host/port/database fields, got: %s", dsn)
+	}
+}
+
+func TestBuildDSNConvertsJdbcSID(t *testing.T) {
 	dsn := buildDSN(connectParams{
 		Host:             "127.0.0.1",
 		Port:             11521,
@@ -109,8 +127,8 @@ func TestBuildDSNConvertsDBXGeneratedJdbcSID(t *testing.T) {
 		t.Fatalf("dsn should be go-ora format, got: %s", dsn)
 	}
 	upperDSN := strings.ToUpper(dsn)
-	if !strings.Contains(dsn, "127.0.0.1:11521") || !strings.Contains(upperDSN, "SID=ORCL") {
-		t.Fatalf("dsn should use forwarded host/port and SID option, got: %s", dsn)
+	if !strings.Contains(dsn, "oracle.example.com:1521") || !strings.Contains(upperDSN, "SID=ORCL") {
+		t.Fatalf("dsn should use JDBC host/port and SID option, got: %s", dsn)
 	}
 }
 
