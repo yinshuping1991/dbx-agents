@@ -6,6 +6,9 @@ import com.dbx.agent.test.JdbcFakeExecutionBehaviorTest;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
+import java.sql.SQLException;
+import java.util.Locale;
+
 class OracleAgentTest extends JdbcFakeExecutionBehaviorTest {
     @Override
     protected DatabaseAgent createAgent() {
@@ -51,5 +54,23 @@ class OracleAgentTest extends JdbcFakeExecutionBehaviorTest {
             "SELECT * FROM (SELECT * FROM EMP) WHERE ROWNUM <= 10",
             OracleAgent.prepareExecutableSql("SELECT * FROM EMP FETCH FIRST 10 ROWS ONLY;")
         );
+    }
+
+    @Test
+    void listDatabasesSqlUsesUserDictionaryInsteadOfObjectDictionary() {
+        String sql = OracleAgent.listDatabasesSql().toUpperCase(Locale.ROOT);
+
+        Assertions.assertTrue(sql.contains("ALL_USERS"));
+        Assertions.assertFalse(sql.contains("ALL_TABLES"));
+        Assertions.assertFalse(sql.contains("ALL_VIEWS"));
+    }
+
+    @Test
+    void detectsPgaLimitError() {
+        Assertions.assertTrue(OracleAgent.isPgaLimitError(new SQLException(
+            "ORA-04036: PGA memory used by the instance exceeds PGA_AGGREGATE_LIMIT",
+            "72000",
+            4036
+        )));
     }
 }

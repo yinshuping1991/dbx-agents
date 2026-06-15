@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -169,6 +170,26 @@ func TestBuildDSNAddsSysDbaOption(t *testing.T) {
 		!strings.Contains(upperDSN, "AUTH+TYPE=SYSDBA") &&
 		!strings.Contains(upperDSN, "AUTH%20TYPE=SYSDBA") {
 		t.Fatalf("dsn should include SYSDBA auth option: %s", dsn)
+	}
+}
+
+func TestListDatabasesSQLUsesUserDictionaryInsteadOfObjectDictionary(t *testing.T) {
+	sqlText := strings.ToUpper(oracleListDatabasesSQL)
+
+	if !strings.Contains(sqlText, "ALL_USERS") {
+		t.Fatalf("schema listing should query ALL_USERS, got: %s", oracleListDatabasesSQL)
+	}
+	if strings.Contains(sqlText, "ALL_TABLES") || strings.Contains(sqlText, "ALL_VIEWS") {
+		t.Fatalf("schema listing should not scan object dictionaries, got: %s", oracleListDatabasesSQL)
+	}
+}
+
+func TestIsOraclePGALimitError(t *testing.T) {
+	if !isOraclePGALimitError(errors.New("ORA-04036: PGA memory used by the instance exceeds PGA_AGGREGATE_LIMIT")) {
+		t.Fatal("expected ORA-04036 to be detected")
+	}
+	if isOraclePGALimitError(errors.New("ORA-00942: table or view does not exist")) {
+		t.Fatal("unexpected ORA-00942 match")
 	}
 }
 

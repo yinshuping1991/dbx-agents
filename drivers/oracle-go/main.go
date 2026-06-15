@@ -21,6 +21,27 @@ import (
 
 const protocolVersion = 1
 const defaultMaxRows = 1000
+const oracleListDatabasesSQL = `
+SELECT username AS owner
+FROM all_users
+WHERE username IS NOT NULL
+  AND username NOT IN (
+    'SYS','SYSTEM','SYSMAN','DBSNMP','SYSBACKUP','SYSDG','SYSKM','SYSRAC','OUTLN',
+    'AUDSYS','LBACSYS','DVF','DVSYS','APPQOSSYS','CTXSYS','MDSYS','MDDATA',
+    'ORDSYS','ORDDATA','ORDPLUGINS','XDB','ANONYMOUS','DIP','EXFSYS',
+    'GSMADMIN_INTERNAL','GSMCATUSER','GSMROOTUSER','GSMUSER','OJVMSYS','OLAPSYS',
+    'ORACLE_OCM','SI_INFORMTN_SCHEMA','WMSYS','XS$NULL','DBSFWUSER',
+    'REMOTE_SCHEDULER_AGENT','PDBADMIN','DGPDB_INT','OPS$ORACLE',
+    'GGSYS','FLOWS_FILES','APEX_PUBLIC_USER'
+  )
+  AND username NOT LIKE 'APEX_%'
+  AND username NOT LIKE 'FLOWS_%'
+  AND username NOT LIKE '%$%'
+ORDER BY CASE
+  WHEN username = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') THEN 0
+  WHEN username = SYS_CONTEXT('USERENV', 'SESSION_USER') THEN 1
+  ELSE 2
+END, username`
 
 type request struct {
 	ID     json.RawMessage            `json:"id"`
@@ -466,26 +487,11 @@ func (s *server) requireDB() (*sql.DB, error) {
 }
 
 func (s *server) listDatabases() ([]databaseInfo, error) {
-	rows, err := s.queryRows(`
-WITH schema_names AS (
-  SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') AS owner FROM DUAL
-  UNION
-  SELECT DISTINCT owner FROM all_tables
-  UNION
-  SELECT DISTINCT owner FROM all_views
-)
-SELECT owner FROM schema_names
-WHERE owner IS NOT NULL
-  AND owner NOT IN ('SYS','SYSTEM','OUTLN','DBSNMP','APPQOSSYS','CTXSYS','XDB','ORDSYS','MDSYS','WMSYS')
-  AND owner NOT LIKE 'APEX_%'
-  AND owner NOT LIKE 'FLOWS_%'
-  AND owner NOT LIKE '%$%'
-ORDER BY CASE
-  WHEN owner = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') THEN 0
-  WHEN owner = SYS_CONTEXT('USERENV', 'SESSION_USER') THEN 1
-  ELSE 2
-END, owner`, nil)
+	rows, err := s.queryRows(oracleListDatabasesSQL, nil)
 	if err != nil {
+		if isOraclePGALimitError(err) {
+			return s.currentSchemaDatabase()
+		}
 		return nil, err
 	}
 	defer rows.Close()
@@ -497,7 +503,28 @@ END, owner`, nil)
 		}
 		result = append(result, databaseInfo{Name: name})
 	}
-	return emptyIfNil(result), rows.Err()
+	if err := rows.Err(); err != nil {
+		if isOraclePGALimitError(err) {
+			return s.currentSchemaDatabase()
+		}
+		return nil, err
+	}
+	return emptyIfNil(result), nil
+}
+
+func isOraclePGALimitError(err error) bool {
+	return err != nil && strings.Contains(strings.ToUpper(err.Error()), "ORA-04036")
+}
+
+func (s *server) currentSchemaDatabase() ([]databaseInfo, error) {
+	schema, err := s.currentSchema()
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(schema) == "" {
+		return []databaseInfo{}, nil
+	}
+	return []databaseInfo{{Name: schema}}, nil
 }
 
 func (s *server) listSchemas() ([]string, error) {

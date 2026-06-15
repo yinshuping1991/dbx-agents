@@ -39,7 +39,7 @@ public class OracleAgent extends BaseDatabaseAgent {
         "GSMADMIN_INTERNAL", "GSMCATUSER", "GSMUSER", "OJVMSYS", "OLAPSYS",
         "ORACLE_OCM", "SI_INFORMTN_SCHEMA", "WMSYS", "XS$NULL", "DBSFWUSER",
         "REMOTE_SCHEDULER_AGENT", "PDBADMIN", "DGPDB_INT", "OPS$ORACLE",
-        "GGSYS", "FLOWS_FILES", "APEX_PUBLIC_USER"
+        "GGSYS", "FLOWS_FILES", "APEX_PUBLIC_USER", "GSMROOTUSER", "SYSRAC"
     );
 
     private static final Pattern OFFSET_FETCH_RE = Pattern.compile(
@@ -128,39 +128,79 @@ public class OracleAgent extends BaseDatabaseAgent {
     @Override
     public List<DatabaseInfo> listDatabases() {
         return unchecked(() -> {
-            String placeholders = SYSTEM_SCHEMAS.stream()
-                .map(schema -> "'" + schema + "'")
-                .collect(Collectors.joining(","));
-            String sql = """
-                WITH schema_names AS (
-                    SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') AS owner FROM DUAL
-                    UNION
-                    SELECT DISTINCT owner FROM all_tables
-                    UNION
-                    SELECT DISTINCT owner FROM all_views
-                )
-                SELECT owner FROM schema_names
-                WHERE owner IS NOT NULL
-                  AND owner NOT IN (%s)
-                  AND owner NOT LIKE 'APEX_%%'
-                  AND owner NOT LIKE 'FLOWS_%%'
-                  AND owner NOT LIKE '%%$%%'
-                ORDER BY CASE
-                    WHEN owner = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') THEN 0
-                    WHEN owner = SYS_CONTEXT('USERENV', 'SESSION_USER') THEN 1
-                    ELSE 2
-                END, owner
-                """.formatted(placeholders).stripIndent().trim();
+            try {
+                return queryDatabaseInfos(listDatabasesSql());
+            } catch (SQLException e) {
+                if (isPgaLimitError(e)) {
+                    return currentSchemaDatabase();
+                }
+                throw e;
+            }
+        });
+    }
 
-            List<DatabaseInfo> result = new ArrayList<>();
-            try (var stmt = requireConnected().createStatement();
-                 ResultSet rs = stmt.executeQuery(sql)) {
-                while (rs.next()) {
-                    result.add(new DatabaseInfo(rs.getString(1)));
+    static String listDatabasesSql() {
+        String placeholders = SYSTEM_SCHEMAS.stream()
+            .map(schema -> "'" + schema + "'")
+            .collect(Collectors.joining(","));
+        return """
+            SELECT username AS owner
+            FROM all_users
+            WHERE username IS NOT NULL
+              AND username NOT IN (%s)
+              AND username NOT LIKE 'APEX_%%'
+              AND username NOT LIKE 'FLOWS_%%'
+              AND username NOT LIKE '%%$%%'
+            ORDER BY CASE
+                WHEN username = SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') THEN 0
+                WHEN username = SYS_CONTEXT('USERENV', 'SESSION_USER') THEN 1
+                ELSE 2
+            END, username
+            """.formatted(placeholders).stripIndent().trim();
+    }
+
+    static boolean isPgaLimitError(SQLException error) {
+        for (Throwable current = error; current != null; current = current.getCause()) {
+            if (current instanceof SQLException sqlException) {
+                if (sqlException.getErrorCode() == 4036 || String.valueOf(sqlException.getMessage()).contains("ORA-04036")) {
+                    return true;
+                }
+                SQLException next = sqlException.getNextException();
+                while (next != null) {
+                    if (next.getErrorCode() == 4036 || String.valueOf(next.getMessage()).contains("ORA-04036")) {
+                        return true;
+                    }
+                    next = next.getNextException();
+                }
+            } else if (String.valueOf(current.getMessage()).contains("ORA-04036")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private List<DatabaseInfo> queryDatabaseInfos(String sql) throws SQLException {
+        List<DatabaseInfo> result = new ArrayList<>();
+        try (var stmt = requireConnected().createStatement();
+             ResultSet rs = stmt.executeQuery(sql)) {
+            while (rs.next()) {
+                result.add(new DatabaseInfo(rs.getString(1)));
+            }
+        }
+        return result;
+    }
+
+    private List<DatabaseInfo> currentSchemaDatabase() throws SQLException {
+        try (var stmt = requireConnected().createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT SYS_CONTEXT('USERENV', 'CURRENT_SCHEMA') FROM DUAL")) {
+            if (rs.next()) {
+                String schema = rs.getString(1);
+                if (schema != null && !schema.isBlank()) {
+                    return List.of(new DatabaseInfo(schema));
                 }
             }
-            return result;
-        });
+        }
+        return List.of();
     }
 
     @Override
