@@ -17,6 +17,7 @@ import com.dbx.agent.QueryPageResult;
 import com.dbx.agent.QueryResult;
 import com.dbx.agent.TableInfo;
 import com.dbx.agent.TriggerInfo;
+import java.io.PrintStream;
 import java.sql.Blob;
 import java.sql.Clob;
 import java.sql.Connection;
@@ -50,19 +51,49 @@ public final class DamengAgent extends BaseDatabaseAgent {
     @Override
     public void connect(ConnectParams params) {
         uncheckedVoid(() -> {
-            Class.forName("dm.jdbc.driver.DmDriver");
-            connection = DriverManager.getConnection(buildUrl(params), params.getUsername(), params.getPassword());
+            withSuppressedStdout(() -> {
+                Class.forName("dm.jdbc.driver.DmDriver");
+                connection = DriverManager.getConnection(buildUrl(params), params.getUsername(), params.getPassword());
+            });
         });
     }
 
     @Override
     public boolean testConnection(ConnectParams params) {
         return unchecked(() -> {
-            Class.forName("dm.jdbc.driver.DmDriver");
-            try (Connection conn = DriverManager.getConnection(buildUrl(params), params.getUsername(), params.getPassword())) {
-                return conn.isValid(5);
-            }
+            return withSuppressedStdout(() -> {
+                Class.forName("dm.jdbc.driver.DmDriver");
+                try (Connection conn = DriverManager.getConnection(buildUrl(params), params.getUsername(), params.getPassword())) {
+                    return conn.isValid(5);
+                }
+            });
         });
+    }
+
+    /**
+     * The DM JDBC driver writes a banner to {@code System.out} during
+     * {@code Class.forName} / driver initialization.  This corrupts the
+     * JSON-RPC stdout protocol.  Temporarily redirect {@code System.out}
+     * to {@code System.err} so driver output lands on stderr instead.
+     */
+    private static <T> T withSuppressedStdout(ThrowingSupplier<T> action) throws Exception {
+        PrintStream originalOut = System.out;
+        try {
+            System.setOut(System.err);
+            return action.get();
+        } finally {
+            System.setOut(originalOut);
+        }
+    }
+
+    private static void withSuppressedStdout(ThrowingRunnable action) throws Exception {
+        PrintStream originalOut = System.out;
+        try {
+            System.setOut(System.err);
+            action.run();
+        } finally {
+            System.setOut(originalOut);
+        }
     }
 
     @Override
