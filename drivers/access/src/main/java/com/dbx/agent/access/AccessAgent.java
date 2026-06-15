@@ -273,7 +273,7 @@ public final class AccessAgent extends BaseDatabaseAgent {
         return params.getDatabase();
     }
 
-    private static String jdbcUrl(ConnectParams params, boolean createIfMissing) {
+    static String jdbcUrl(ConnectParams params, boolean createIfMissing) {
         String rawUrl;
         if (startsWithIgnoreCase(params.getConnection_string(), "jdbc:ucanaccess:")) {
             rawUrl = params.getConnection_string();
@@ -282,6 +282,7 @@ public final class AccessAgent extends BaseDatabaseAgent {
         } else {
             rawUrl = "jdbc:ucanaccess://" + databasePath(params);
         }
+        rawUrl = appendUCanAccessParams(rawUrl, params.getUrl_params());
 
         if (!createIfMissing || Files.exists(Path.of(databasePath(params)))) {
             return rawUrl;
@@ -290,6 +291,22 @@ public final class AccessAgent extends BaseDatabaseAgent {
             return rawUrl;
         }
         return rawUrl + ";newDatabaseVersion=V2010";
+    }
+
+    private static String appendUCanAccessParams(String url, String urlParams) {
+        String params = trimUCanAccessParams(urlParams);
+        if (params.isEmpty()) {
+            return url;
+        }
+        return url + (url.endsWith(";") ? "" : ";") + params;
+    }
+
+    private static String trimUCanAccessParams(String urlParams) {
+        String value = urlParams == null ? "" : urlParams.trim();
+        while (value.startsWith("?") || value.startsWith("&") || value.startsWith(";")) {
+            value = value.substring(1);
+        }
+        return value;
     }
 
     private static String normalizeTableType(String value) {

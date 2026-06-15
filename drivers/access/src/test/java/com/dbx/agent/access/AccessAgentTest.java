@@ -61,6 +61,28 @@ class AccessAgentTest extends JdbcConnectedAgentTest {
     }
 
     @Test
+    void appendsUcanaccessUrlParams() {
+        Path file = tempDir.resolve("params.accdb");
+        ConnectParams params = new ConnectParams("", 0, file.toString(), "", "", "memory=false;ignoreCase=true", "", false);
+
+        Assertions.assertEquals(
+            "jdbc:ucanaccess://" + file + ";memory=false;ignoreCase=true;newDatabaseVersion=V2010",
+            AccessAgent.jdbcUrl(params, true)
+        );
+    }
+
+    @Test
+    void trimsUcanaccessUrlParamSeparators() {
+        Path file = tempDir.resolve("params-existing.accdb");
+        ConnectParams params = new ConnectParams("", 0, "jdbc:ucanaccess://" + file + ";", "", "", ";memory=false", "", false);
+
+        Assertions.assertEquals(
+            "jdbc:ucanaccess://" + file + ";memory=false;newDatabaseVersion=V2010",
+            AccessAgent.jdbcUrl(params, true)
+        );
+    }
+
+    @Test
     void supportsLimitOffsetSqlAndCursorResultPages() {
         withAgent("pages", agent -> {
             agent.executeQuery("CREATE TABLE Items (ID COUNTER PRIMARY KEY, Value INTEGER)", null, new ExecuteQueryOptions());
