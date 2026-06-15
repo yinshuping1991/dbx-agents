@@ -279,7 +279,8 @@ public final class StandardJdbcMetadata {
         if (type == null || type.trim().isEmpty()) {
             return "TABLE";
         }
-        if ("BASE TABLE".equals(type.toUpperCase(Locale.ROOT))) {
+        String normalized = type.toUpperCase(Locale.ROOT);
+        if ("BASE TABLE".equals(normalized) || "COLUMN TABLE".equals(normalized) || "ROW TABLE".equals(normalized)) {
             return "TABLE";
         }
         return type;

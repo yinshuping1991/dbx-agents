@@ -102,6 +102,49 @@ class StandardJdbcMetadataTest {
     }
 
     @Test
+    void listTablesAllowsHanaColumnAndRowTables() {
+        JdbcAgentProfile hanaProfile = new JdbcAgentProfile(
+            "com.sap.db.jdbc.Driver",
+            "jdbc:sap://{host}:{port}/?databaseName={database}",
+            30015,
+            false,
+            Collections.emptySet(),
+            Arrays.asList("COLUMN TABLE", "ROW TABLE", "TABLE", "VIEW")
+        );
+        AtomicReference<String[]> capturedTypes = new AtomicReference<>();
+        Connection conn = connection(
+            rows(),
+            rows(
+                row("TABLE_NAME", "ORDERS", "TABLE_TYPE", "COLUMN TABLE", "REMARKS", null),
+                row("TABLE_NAME", "AUDIT_LOG", "TABLE_TYPE", "ROW TABLE", "REMARKS", null),
+                row("TABLE_NAME", "ACTIVE_ORDERS", "TABLE_TYPE", "VIEW", "REMARKS", null)
+            ),
+            rows(),
+            rows(),
+            rows(),
+            rows(),
+            rows(
+                row("TABLE_TYPE", "COLUMN TABLE"),
+                row("TABLE_TYPE", "ROW TABLE"),
+                row("TABLE_TYPE", "VIEW")
+            ),
+            capturedTypes
+        );
+
+        List<TableInfo> tables = StandardJdbcMetadata.INSTANCE.listTables(conn, hanaProfile, "", "APP");
+
+        assertEquals(Arrays.asList("COLUMN TABLE", "ROW TABLE", "VIEW"), Arrays.asList(capturedTypes.get()));
+        assertEquals(Arrays.asList("ACTIVE_ORDERS", "AUDIT_LOG", "ORDERS"), Arrays.asList(
+            tables.get(0).getName(),
+            tables.get(1).getName(),
+            tables.get(2).getName()
+        ));
+        assertEquals("VIEW", tables.get(0).getTable_type());
+        assertEquals("TABLE", tables.get(1).getTable_type());
+        assertEquals("TABLE", tables.get(2).getTable_type());
+    }
+
+    @Test
     void mapsColumnsWithPrimaryKeysAndLengths() {
         Connection conn = connection(
             rows(),
