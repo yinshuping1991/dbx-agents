@@ -259,6 +259,17 @@ class MongoAgentTest {
         assertEquals(null, MongoAgent.firstNonBlank(null, "", "  "));
     }
 
+    @Test
+    void convertValuePreservesUnsafeLongForJsonClients() {
+        assertEquals("2326645729978441729", MongoAgent.convertValue(2_326_645_729_978_441_729L));
+        assertEquals("-2326645729978441729", MongoAgent.convertValue(-2_326_645_729_978_441_729L));
+    }
+
+    @Test
+    void convertValueKeepsSafeLongAsNumber() {
+        assertEquals(42L, MongoAgent.convertValue(42L));
+    }
+
     // ─── helpers ───
 
     private static JsonObject minimalConnection() {

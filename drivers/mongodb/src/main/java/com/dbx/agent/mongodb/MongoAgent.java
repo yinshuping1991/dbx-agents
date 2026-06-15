@@ -49,6 +49,7 @@ public final class MongoAgent {
     private static final Gson GSON = new Gson();
     private static final DateTimeFormatter DATE_FORMAT =
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS").withZone(ZoneOffset.UTC);
+    private static final long JS_MAX_SAFE_INTEGER = 9_007_199_254_740_991L;
     private static MongoClient client;
 
     private MongoAgent() {
@@ -377,7 +378,7 @@ public final class MongoAgent {
         return result;
     }
 
-    private static Object convertValue(Object value) {
+    static Object convertValue(Object value) {
         if (value == null) {
             return null;
         }
@@ -398,8 +399,10 @@ public final class MongoAgent {
             Instant instant = Instant.ofEpochMilli(date.getTime());
             return DATE_FORMAT.format(instant);
         }
-        if (value instanceof Boolean || value instanceof Integer || value instanceof Long ||
-            value instanceof Double || value instanceof String) {
+        if (value instanceof Long longValue) {
+            return longValue < -JS_MAX_SAFE_INTEGER || longValue > JS_MAX_SAFE_INTEGER ? longValue.toString() : longValue;
+        }
+        if (value instanceof Boolean || value instanceof Integer || value instanceof Double || value instanceof String) {
             return value;
         }
         return value.toString();
