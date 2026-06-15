@@ -13,6 +13,7 @@ KOTLIN_SCAN_EXCLUDED_PARTS = {".git", ".gradle", "build"}
 DEFAULT_AGENT_JRE_KEY = "21"
 LEGACY_ORACLE_JRE_KEY = "8"
 NON_JDBC_AGENT_MODULES = {"mongodb", "etcd"}
+NATIVE_ONLY_AGENT_MODULES = {"xugu"}
 JDBC_ARCHITECTURE_ALLOWLIST = {
     "access": "custom Access metadata and URL behavior pending migration",
     "dameng": "custom Dameng metadata and DDL pending migration",
@@ -67,6 +68,11 @@ def included_agent_modules(root: Path) -> set[str]:
     return included - INFRA_MODULES
 
 
+def agent_modules(root: Path) -> set[str]:
+    native = {name for name in NATIVE_ONLY_AGENT_MODULES if module_dir(root, name).exists()}
+    return included_agent_modules(root) | native
+
+
 def module_dir(root: Path, module: str) -> Path:
     nested = root / "drivers" / module
     if nested.exists():
@@ -79,7 +85,7 @@ def module_relative_path(root: Path, module: str, *parts: str) -> Path:
 
 
 def validate_versions(root: Path) -> list[str]:
-    included = included_agent_modules(root)
+    included = agent_modules(root)
     versions = set(json.loads((root / "versions.json").read_text(encoding="utf-8")))
     return (
         [f"included module missing version: {name}" for name in sorted(included - versions)]
@@ -121,6 +127,8 @@ def validate_manifest_fields(root: Path, modules: set[str]) -> list[str]:
         root_build_text,
     )
     for module in sorted(modules):
+        if module in NATIVE_ONLY_AGENT_MODULES:
+            continue
         build_file = module_relative_path(root, module, "build.gradle")
         relative = build_file.relative_to(root)
         if not build_file.exists():
@@ -154,7 +162,7 @@ def validate_manifest_fields(root: Path, modules: set[str]) -> list[str]:
 
 def validate_jdbc_architecture(root: Path, modules: set[str]) -> list[str]:
     problems: list[str] = []
-    for module in sorted(modules - NON_JDBC_AGENT_MODULES):
+    for module in sorted(modules - NON_JDBC_AGENT_MODULES - NATIVE_ONLY_AGENT_MODULES):
         source = main_class_source(root, module)
         if source is None or not source.exists():
             continue
@@ -252,7 +260,7 @@ def manifest_attributes(build_text: str) -> dict[str, str]:
 
 
 def validate(root: Path) -> list[str]:
-    modules = included_agent_modules(root)
+    modules = agent_modules(root)
     return (
         validate_versions(root)
         + validate_source_patterns(root)

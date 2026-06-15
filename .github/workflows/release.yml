@@ -147,6 +147,45 @@ jobs:
           name: oracle-native
           path: "release-native/dbx-agent-oracle-*"
 
+  build-xugu-native:
+    needs: [bump-versions]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22.x"
+      - name: Test Xugu native agent
+        working-directory: drivers/xugu
+        run: GONOSUMDB=gitee.com/XuguDB/go-xugu-driver go test ./...
+      - name: Cross-compile Xugu native agent
+        shell: bash
+        run: |
+          mkdir -p release-native
+          cd drivers/xugu
+          declare -A TARGETS=(
+            ["macos-aarch64"]="darwin/arm64"
+            ["macos-x64"]="darwin/amd64"
+            ["linux-aarch64"]="linux/arm64"
+            ["linux-x64"]="linux/amd64"
+            ["windows-aarch64"]="windows/arm64"
+            ["windows-x64"]="windows/amd64"
+          )
+          for platform in "${!TARGETS[@]}"; do
+            IFS=/ read -r goos goarch <<< "${TARGETS[$platform]}"
+            output="../../release-native/dbx-agent-xugu-${platform}"
+            if [[ "$goos" == "windows" ]]; then
+              output="${output}.exe"
+            fi
+            echo "Building $platform ($goos/$goarch)"
+            GONOSUMDB=gitee.com/XuguDB/go-xugu-driver CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags="-s -w" -o "$output" .
+          done
+          ls -lh ../../release-native
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xugu-native
+          path: "release-native/dbx-agent-xugu-*"
+
   build-jre:
     runs-on: ubuntu-latest
     strategy:
@@ -261,7 +300,7 @@ jobs:
           path: "dbx-jre-8-*.tar.gz"
 
   release:
-    needs: [bump-versions, build-agents, build-oracle-native, build-jre, build-jre8]
+    needs: [bump-versions, build-agents, build-oracle-native, build-xugu-native, build-jre, build-jre8]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -274,6 +313,7 @@ jobs:
           mkdir -p release
           find artifacts/agent-jars -name '*.jar' -exec cp {} release/ \;
           find artifacts/oracle-native -type f -name 'dbx-agent-oracle-*' -exec cp {} release/ \;
+          find artifacts/xugu-native -type f -name 'dbx-agent-xugu-*' -exec cp {} release/ \;
           find artifacts -name 'dbx-jre-*.tar.gz' -exec cp {} release/ \;
           ls -lh release/
 
@@ -310,6 +350,29 @@ jobs:
                 "jar": { "url": "${url}", "sha256": "${sha256}", "size": ${size} }
               }
           ENTRY
+          }
+
+          generate_native_entry() {
+            local name="$1" label="$2" jre_key="$3" version="$4" native_json="$5"
+            cat <<ENTRY
+              "${name}": {
+                "version": "${version}",
+                "label": "${label}",
+                "min_app_version": "0.6.0",
+                "jre": "${jre_key}",
+                "external_driver_required": false,
+                "native": {${native_json}
+                }
+              }
+          ENTRY
+          }
+
+          native_only_label() {
+            local name="$1"
+            case "$name" in
+              xugu) echo "虚谷 XuguDB" ;;
+              *) echo "$name" ;;
+            esac
           }
 
           generate_jre_platforms() {
@@ -367,6 +430,16 @@ jobs:
             [ -n "$DRIVERS" ] && DRIVERS="${DRIVERS},"$'\n'
             DRIVERS="${DRIVERS}$(generate_jar_entry "$name" "$label" "$f" "$jre_key" "$version" "$external_driver" "$native_json")"
           done
+          for name in xugu; do
+            [ -f "release/dbx-agent-${name}.jar" ] && continue
+            native_json=$(generate_native_platforms "$name")
+            [ -z "$native_json" ] && continue
+            label=$(native_only_label "$name")
+            jre_key=$(detect_jre_key "$name")
+            version=$(get_module_version "$name")
+            [ -n "$DRIVERS" ] && DRIVERS="${DRIVERS},"$'\n'
+            DRIVERS="${DRIVERS}$(generate_native_entry "$name" "$label" "$jre_key" "$version" "$native_json")"
+          done
 
           cat > release/agent-registry.json <<EOF
           {
@@ -404,14 +477,35 @@ jobs:
           PREV_TAG: ${{ needs.bump-versions.outputs.prev_tag }}
         run: |
           NOTES=""
+          DRIVER_NAMES=()
           for f in release/dbx-agent-*.jar; do
-            name=$(basename "$f" .jar | sed 's/dbx-agent-//')
+            DRIVER_NAMES+=("$(basename "$f" .jar | sed 's/dbx-agent-//')")
+          done
+          for name in xugu; do
+            [ -f "release/dbx-agent-${name}.jar" ] && continue
+            compgen -G "release/dbx-agent-${name}-*" > /dev/null && DRIVER_NAMES+=("$name")
+          done
+
+          native_only_label() {
+            local name="$1"
+            case "$name" in
+              xugu) echo "虚谷 XuguDB" ;;
+              *) echo "$name" ;;
+            esac
+          }
+
+          for name in "${DRIVER_NAMES[@]}"; do
             old_ver=$(echo "$PREV_VERSIONS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('$name',''))")
             new_ver=$(echo "$MODULE_VERSIONS" | python3 -c "import sys,json; print(json.load(sys.stdin).get('$name',''))")
             [ "$old_ver" = "$new_ver" ] && continue
 
-            label=$(unzip -p "$f" META-INF/MANIFEST.MF | awk -F': ' 'BEGIN{IGNORECASE=1} /^Agent-Label:/ {sub(/\r$/, "", $2); print $2; exit}' || echo "$name")
-            [ -z "$label" ] && label="$name"
+            jar_file="release/dbx-agent-${name}.jar"
+            if [ -f "$jar_file" ]; then
+              label=$(unzip -p "$jar_file" META-INF/MANIFEST.MF | awk -F': ' 'BEGIN{IGNORECASE=1} /^Agent-Label:/ {sub(/\r$/, "", $2); print $2; exit}' || echo "$name")
+              [ -z "$label" ] && label="$name"
+            else
+              label=$(native_only_label "$name")
+            fi
 
             NOTES="${NOTES}### ${label} (${old_ver} → ${new_ver})"$'\n'
             if [ -d "drivers/$name" ]; then
@@ -484,7 +578,7 @@ jobs:
           done
           echo "Drivers: $UPLOADED uploaded, $SKIPPED skipped"
 
-          for f in release/dbx-agent-oracle-*; do
+          for f in release/dbx-agent-*; do
             [ -f "$f" ] || continue
             [[ "$f" != *.jar ]] || continue
             aws s3 cp "$f" \

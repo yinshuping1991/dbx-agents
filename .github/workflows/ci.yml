@@ -25,8 +25,12 @@ jobs:
       - run: python3 scripts/validate_agents.py
       - run: go test ./...
         working-directory: drivers/oracle-go
+      - run: GONOSUMDB=gitee.com/XuguDB/go-xugu-driver go test ./...
+        working-directory: drivers/xugu
       - run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /tmp/dbx-agent-oracle-linux-x64 .
         working-directory: drivers/oracle-go
+      - run: GONOSUMDB=gitee.com/XuguDB/go-xugu-driver CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /tmp/dbx-agent-xugu-linux-x64 .
+        working-directory: drivers/xugu
       - run: ./gradlew test shadowJar --continue
       - run: python3 scripts/validate_agent_jars.py
       - uses: actions/upload-artifact@v4

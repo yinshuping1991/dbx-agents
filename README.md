@@ -40,13 +40,13 @@ Each agent runs as a standalone process and communicates with DBX via stdin/stdo
 | gaussdb | GaussDB | GaussDB JDBC |
 | tdengine | TDengine | taos-jdbcdriver (WebSocket) |
 | yashandb | 崖山 YashanDB | YashanDB JDBC |
-| xugu | 虚谷 XuguDB | XuguDB JDBC |
+| xugu | 虚谷 XuguDB | XuguDB Go native agent |
 | iotdb | Apache IoTDB | IoTDB JDBC |
 | etcd | etcd | jetcd |
 
 ## Multi-JRE Support
 
-Most Java agents target JRE 21. Native agents, such as `oracle`, do not require a JRE. Agents that still require legacy Java runtimes (e.g. compatibility fallback `oracle-10g` uses JRE 8) declare their JRE version in the registry. DBX downloads and manages multiple JRE installations automatically.
+Most Java agents target JRE 21. Native agents, such as `oracle` and `xugu`, do not require a JRE. Agents that still require legacy Java runtimes (e.g. compatibility fallback `oracle-10g` uses JRE 8) declare their JRE version in the registry. DBX downloads and manages multiple JRE installations automatically.
 
 ## Build
 
@@ -55,9 +55,10 @@ Requires JDK 8 and 21 (Gradle toolchain auto-downloads if needed).
 ```bash
 ./gradlew shadowJar
 (cd drivers/oracle-go && go build -o agent .)
+(cd drivers/xugu && go build -o agent .)
 ```
 
-Output JARs are in `drivers/{module}/build/libs/`. The Oracle native agent builds from `drivers/oracle-go`.
+Output JARs are in `drivers/{module}/build/libs/`. Native agents build from `drivers/oracle-go` and `drivers/xugu`.
 
 ## Development
 
