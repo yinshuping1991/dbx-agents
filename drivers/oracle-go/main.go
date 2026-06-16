@@ -565,7 +565,7 @@ func (s *server) listTables(schema string) ([]tableInfo, error) {
 		return nil, err
 	}
 	rows, err := s.queryRows(`
-SELECT o.OBJECT_NAME,
+SELECT /*+ NO_QUERY_TRANSFORMATION */ o.OBJECT_NAME,
        CASE o.OBJECT_TYPE WHEN 'VIEW' THEN 'VIEW' ELSE 'TABLE' END AS TABLE_TYPE,
        c.COMMENTS
 FROM ALL_OBJECTS o
@@ -574,6 +574,9 @@ WHERE o.OWNER = :1
   AND o.OBJECT_TYPE IN ('TABLE', 'VIEW')
 ORDER BY o.OBJECT_NAME`, []any{schema})
 	if err != nil {
+		if isOraclePGALimitError(err) {
+			return []tableInfo{}, nil
+		}
 		return nil, err
 	}
 	defer rows.Close()
@@ -594,13 +597,16 @@ func (s *server) listObjects(schema string) ([]objectInfo, error) {
 		return nil, err
 	}
 	rows, err := s.queryRows(`
-SELECT o.OBJECT_NAME, o.OBJECT_TYPE, c.COMMENTS
+SELECT /*+ NO_QUERY_TRANSFORMATION */ o.OBJECT_NAME, o.OBJECT_TYPE, c.COMMENTS
 FROM ALL_OBJECTS o
 LEFT JOIN ALL_TAB_COMMENTS c ON c.OWNER = o.OWNER AND c.TABLE_NAME = o.OBJECT_NAME
 WHERE o.OWNER = :1
   AND o.OBJECT_TYPE IN ('TABLE', 'VIEW', 'PROCEDURE', 'FUNCTION', 'PACKAGE')
 ORDER BY o.OBJECT_TYPE, o.OBJECT_NAME`, []any{schema})
 	if err != nil {
+		if isOraclePGALimitError(err) {
+			return []objectInfo{}, nil
+		}
 		return nil, err
 	}
 	defer rows.Close()
