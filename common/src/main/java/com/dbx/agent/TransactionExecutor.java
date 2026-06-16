@@ -74,6 +74,20 @@ public final class TransactionExecutor {
         if (schema == null || schema.trim().isEmpty()) {
             return;
         }
+        // Prefer JDBC standard APIs over database-specific SQL.
+        try {
+            conn.setSchema(schema);
+            return;
+        } catch (Exception | AbstractMethodError ignored) {
+            // setSchema not supported by this driver
+        }
+        try {
+            conn.setCatalog(schema);
+            return;
+        } catch (Exception | AbstractMethodError ignored) {
+            // setCatalog not supported either
+        }
+        // Fallback: execute database-specific SQL (e.g. USE, SET SCHEMA, etc.)
         String schemaSql = setSchemaSql.apply(schema);
         if (schemaSql == null || schemaSql.trim().isEmpty()) {
             return;

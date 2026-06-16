@@ -178,7 +178,7 @@ class CommonJavaCompatibilityTest {
 
         assertEquals(2L, result.getAffected_rows());
         assertEquals(
-            Arrays.asList("supportsTransactions", "execute:SET SCHEMA \"APP\"", "executeUpdate:UPDATE A SET ID = 1", "executeUpdate:UPDATE B SET ID = 2"),
+            Arrays.asList("supportsTransactions", "setSchema:APP", "executeUpdate:UPDATE A SET ID = 1", "executeUpdate:UPDATE B SET ID = 2"),
             calls
         );
     }
@@ -364,6 +364,14 @@ class CommonJavaCompatibilityTest {
                     }
                     return defaultValue(stmtMethod.getReturnType());
                 });
+            }
+            if ("setSchema".equals(name)) {
+                calls.add("setSchema:" + args[0]);
+                return null;
+            }
+            if ("setCatalog".equals(name)) {
+                calls.add("setCatalog:" + args[0]);
+                return null;
             }
             if ("setAutoCommit".equals(name) || "commit".equals(name) || "rollback".equals(name)) {
                 calls.add(name);

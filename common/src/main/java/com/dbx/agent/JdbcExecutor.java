@@ -483,6 +483,22 @@ public final class JdbcExecutor {
         if (schema == null || schema.trim().isEmpty()) {
             return;
         }
+        // Prefer JDBC standard APIs over database-specific SQL.
+        // setSchema (JDBC 4.1) and setCatalog (JDBC 1.0) work universally
+        // across all JDBC drivers without needing to know the database dialect.
+        try {
+            conn.setSchema(schema);
+            return;
+        } catch (SQLException | AbstractMethodError ignored) {
+            // setSchema not supported by this driver
+        }
+        try {
+            conn.setCatalog(schema);
+            return;
+        } catch (SQLException | AbstractMethodError ignored) {
+            // setCatalog not supported either
+        }
+        // Fallback: execute database-specific SQL (e.g. USE, SET SCHEMA, etc.)
         String schemaSql = setSchemaSql.apply(schema);
         if (schemaSql == null || schemaSql.trim().isEmpty()) {
             return;
