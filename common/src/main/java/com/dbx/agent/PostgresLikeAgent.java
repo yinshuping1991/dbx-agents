@@ -194,6 +194,20 @@ public abstract class PostgresLikeAgent extends AbstractJdbcAgent {
                     }
                 }
             }
+            try (java.sql.PreparedStatement stmt = requireConnection().prepareStatement(
+                "SELECT c.relname AS sequence_name, 'SEQUENCE' AS object_type " +
+                "FROM pg_catalog.pg_class c " +
+                "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace " +
+                "WHERE n.nspname = ? AND c.relkind = 'S' " +
+                "ORDER BY c.relname"
+            )) {
+                stmt.setString(1, schema);
+                try (ResultSet rs = stmt.executeQuery()) {
+                    while (rs.next()) {
+                        result.add(new ObjectInfo(rs.getString(1), rs.getString(2), schema, null));
+                    }
+                }
+            }
             return result;
         });
     }
