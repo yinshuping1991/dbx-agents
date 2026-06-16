@@ -215,48 +215,62 @@ public class OracleAgent extends BaseDatabaseAgent {
     @Override
     public List<TableInfo> listTables(String schema) {
         return unchecked(() -> {
-            String sql = """
-                SELECT o.OBJECT_NAME,
-                    CASE o.OBJECT_TYPE WHEN 'VIEW' THEN 'VIEW' ELSE 'TABLE' END AS TABLE_TYPE,
-                    c.COMMENTS
-                FROM ALL_OBJECTS o
-                LEFT JOIN ALL_TAB_COMMENTS c ON c.OWNER = o.OWNER AND c.TABLE_NAME = o.OBJECT_NAME
-                WHERE o.OWNER = ? AND o.OBJECT_TYPE IN ('TABLE','VIEW')
-                ORDER BY o.OBJECT_NAME
-                """.stripIndent().trim();
+            try {
+                String sql = """
+                    SELECT /*+ NO_QUERY_TRANSFORMATION */ o.OBJECT_NAME,
+                        CASE o.OBJECT_TYPE WHEN 'VIEW' THEN 'VIEW' ELSE 'TABLE' END AS TABLE_TYPE,
+                        c.COMMENTS
+                    FROM ALL_OBJECTS o
+                    LEFT JOIN ALL_TAB_COMMENTS c ON c.OWNER = o.OWNER AND c.TABLE_NAME = o.OBJECT_NAME
+                    WHERE o.OWNER = ? AND o.OBJECT_TYPE IN ('TABLE','VIEW')
+                    ORDER BY o.OBJECT_NAME
+                    """.stripIndent().trim();
 
-            List<TableInfo> result = new ArrayList<>();
-            try (var stmt = requireConnected().prepareStatement(sql)) {
-                stmt.setString(1, schema);
-                try (ResultSet rs = stmt.executeQuery()) {
-                    while (rs.next()) {
-                        result.add(new TableInfo(rs.getString(1), rs.getString(2), rs.getString(3)));
+                List<TableInfo> result = new ArrayList<>();
+                try (var stmt = requireConnected().prepareStatement(sql)) {
+                    stmt.setString(1, schema);
+                    try (ResultSet rs = stmt.executeQuery()) {
+                        while (rs.next()) {
+                            result.add(new TableInfo(rs.getString(1), rs.getString(2), rs.getString(3)));
+                        }
                     }
                 }
+                return result;
+            } catch (SQLException e) {
+                if (isPgaLimitError(e)) {
+                    return List.of();
+                }
+                throw e;
             }
-            return result;
         });
     }
 
     @Override
     public List<ObjectInfo> listObjects(String schema) {
         return unchecked(() -> {
-            String sql = """
-                SELECT OBJECT_NAME, OBJECT_TYPE FROM ALL_OBJECTS
-                WHERE OWNER = ? AND OBJECT_TYPE IN ('TABLE', 'VIEW', 'PROCEDURE', 'FUNCTION')
-                ORDER BY CASE OBJECT_TYPE WHEN 'TABLE' THEN 0 WHEN 'VIEW' THEN 1 WHEN 'PROCEDURE' THEN 2 ELSE 3 END, OBJECT_NAME
-                """.stripIndent().trim();
+            try {
+                String sql = """
+                    SELECT /*+ NO_QUERY_TRANSFORMATION */ OBJECT_NAME, OBJECT_TYPE FROM ALL_OBJECTS
+                    WHERE OWNER = ? AND OBJECT_TYPE IN ('TABLE', 'VIEW', 'PROCEDURE', 'FUNCTION')
+                    ORDER BY CASE OBJECT_TYPE WHEN 'TABLE' THEN 0 WHEN 'VIEW' THEN 1 WHEN 'PROCEDURE' THEN 2 ELSE 3 END, OBJECT_NAME
+                    """.stripIndent().trim();
 
-            List<ObjectInfo> result = new ArrayList<>();
-            try (var stmt = requireConnected().prepareStatement(sql)) {
-                stmt.setString(1, schema);
-                try (ResultSet rs = stmt.executeQuery()) {
-                    while (rs.next()) {
-                        result.add(new ObjectInfo(rs.getString(1), rs.getString(2), schema, null));
+                List<ObjectInfo> result = new ArrayList<>();
+                try (var stmt = requireConnected().prepareStatement(sql)) {
+                    stmt.setString(1, schema);
+                    try (ResultSet rs = stmt.executeQuery()) {
+                        while (rs.next()) {
+                            result.add(new ObjectInfo(rs.getString(1), rs.getString(2), schema, null));
+                        }
                     }
                 }
+                return result;
+            } catch (SQLException e) {
+                if (isPgaLimitError(e)) {
+                    return List.of();
+                }
+                throw e;
             }
-            return result;
         });
     }
 
