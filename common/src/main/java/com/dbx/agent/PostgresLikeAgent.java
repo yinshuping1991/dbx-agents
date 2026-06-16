@@ -236,7 +236,7 @@ public abstract class PostgresLikeAgent extends AbstractJdbcAgent {
         return unchecked(() -> {
             String upperType = objectType.toUpperCase();
             String sql;
-            if ("VIEW".equals(upperType)) {
+            if ("VIEW".equals(upperType) || "MATERIALIZED VIEW".equals(upperType)) {
                 sql = "SELECT pg_get_viewdef(to_regclass(?), true)";
             } else if ("FUNCTION".equals(upperType)) {
                 sql = "SELECT pg_get_functiondef(p.oid)\n" +
@@ -253,7 +253,7 @@ public abstract class PostgresLikeAgent extends AbstractJdbcAgent {
             }
 
             String source;
-            if ("VIEW".equals(upperType)) {
+            if ("VIEW".equals(upperType) || "MATERIALIZED VIEW".equals(upperType)) {
                 try (java.sql.PreparedStatement stmt = requireConnection().prepareStatement(sql)) {
                     stmt.setString(1, quoteQualifiedIdentifier(schema, name));
                     try (ResultSet rs = stmt.executeQuery()) {
