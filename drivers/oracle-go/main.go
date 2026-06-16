@@ -797,11 +797,29 @@ func (s *server) getObjectSource(schema, name, objectType string) (map[string]an
 	if err != nil {
 		return nil, err
 	}
+	upperType := strings.ToUpper(objectType)
+	if upperType == "VIEW" {
+		// ALL_VIEWS.TEXT for views — ALL_SOURCE doesn't contain views, and
+		// DBMS_METADATA.GET_DDL fails on XE editions.
+		var source string
+		err = s.db.QueryRow(
+			"SELECT TEXT FROM ALL_VIEWS WHERE OWNER = :1 AND VIEW_NAME = :2",
+			schema, strings.ToUpper(name),
+		).Scan(&source)
+		if errors.Is(err, sql.ErrNoRows) {
+			return map[string]any{"name": name, "object_type": objectType, "schema": schema, "source": ""}, nil
+		}
+		if err != nil {
+			return nil, err
+		}
+		return map[string]any{"name": name, "object_type": objectType, "schema": schema, "source": source}, nil
+	}
+
 	rows, err := s.queryRows(`
 SELECT TEXT
 FROM ALL_SOURCE
 WHERE OWNER = :1 AND NAME = :2 AND TYPE = :3
-ORDER BY LINE`, []any{schema, strings.ToUpper(name), strings.ToUpper(objectType)})
+ORDER BY LINE`, []any{schema, strings.ToUpper(name), upperType})
 	if err != nil {
 		return nil, err
 	}
