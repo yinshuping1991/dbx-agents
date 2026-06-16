@@ -202,7 +202,10 @@ public final class JsonRpcServer {
             } catch (Exception ignored) {
             }
             if (currentCatalog == null || !currentCatalog.trim().equalsIgnoreCase(database.trim())) {
-                agent.getConnection().setCatalog(database);
+                try {
+                    agent.getConnection().setCatalog(database);
+                } catch (Exception ignored) {
+                }
             }
         }
     }
