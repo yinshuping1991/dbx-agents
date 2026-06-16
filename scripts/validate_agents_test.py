@@ -344,6 +344,7 @@ class ValidateAgentsTest(unittest.TestCase):
                       }
                     }
                     EOF
+                    legacy_jar_url="https://github.com/${REPO}/releases/download/${TAG}/dbx-agent-${name}-legacy-placeholder.jar"
                     '''
                 ),
                 encoding="utf-8",
@@ -384,6 +385,7 @@ class ValidateAgentsTest(unittest.TestCase):
                     "release workflow must build the default JRE with key 21",
                     "non-legacy agents must use JRE key 21",
                     "registry must publish Java 21 under JRE key 21",
+                    "native-only registry entries must publish a legacy jar placeholder for older DBX clients",
                     "release workflow must not build Java 21 under JRE key 17",
                     "non-legacy agents must not use JRE key 17",
                     "registry must not publish Java 21 under JRE key 17",

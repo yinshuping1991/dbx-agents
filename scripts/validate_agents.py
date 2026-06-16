@@ -234,6 +234,10 @@ def validate_release_runtime_keys(root: Path) -> list[str]:
             rf'"{DEFAULT_AGENT_JRE_KEY}":\s*\{{\s*"version":\s*"{DEFAULT_AGENT_JRE_KEY}\.',
             f"registry must publish Java {DEFAULT_AGENT_JRE_KEY} under JRE key {DEFAULT_AGENT_JRE_KEY}",
         ),
+        (
+            r"legacy-placeholder\.jar",
+            "native-only registry entries must publish a legacy jar placeholder for older DBX clients",
+        ),
     ]
     for pattern, message in required_patterns:
         if not re.search(pattern, text, flags=re.S):

@@ -354,6 +354,7 @@ jobs:
 
           generate_native_entry() {
             local name="$1" label="$2" jre_key="$3" version="$4" native_json="$5"
+            local legacy_jar_url="https://github.com/${REPO}/releases/download/${TAG}/dbx-agent-${name}-legacy-placeholder.jar"
             cat <<ENTRY
               "${name}": {
                 "version": "${version}",
@@ -362,7 +363,8 @@ jobs:
                 "jre": "${jre_key}",
                 "external_driver_required": false,
                 "native": {${native_json}
-                }
+                },
+                "jar": { "url": "${legacy_jar_url}", "sha256": "", "size": 0 }
               }
           ENTRY
           }
