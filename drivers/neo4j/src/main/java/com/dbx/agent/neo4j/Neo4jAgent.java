@@ -15,14 +15,17 @@ import com.dbx.agent.TransactionExecutor;
 import com.dbx.agent.TriggerInfo;
 
 import java.sql.Connection;
+import java.sql.DatabaseMetaData;
 import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 
 public class Neo4jAgent extends BaseDatabaseAgent {
     private Connection connection;
@@ -41,7 +44,7 @@ public class Neo4jAgent extends BaseDatabaseAgent {
     public void connect(ConnectParams params) {
         uncheckedVoid(() -> {
             Class.forName("org.neo4j.jdbc.Neo4jDriver");
-            String url = "jdbc:neo4j://" + params.getHost() + ":" + params.getPort();
+            String url = buildNeo4jUrl(params);
             connection = DriverManager.getConnection(url, params.getUsername(), params.getPassword());
         });
     }
@@ -50,11 +53,21 @@ public class Neo4jAgent extends BaseDatabaseAgent {
     public boolean testConnection(ConnectParams params) {
         return unchecked(() -> {
             Class.forName("org.neo4j.jdbc.Neo4jDriver");
-            String url = "jdbc:neo4j://" + params.getHost() + ":" + params.getPort();
+            String url = buildNeo4jUrl(params);
             try (Connection conn = DriverManager.getConnection(url, params.getUsername(), params.getPassword())) {
                 return conn.isValid(5);
             }
         });
+    }
+
+    private static String buildNeo4jUrl(ConnectParams params) {
+        StringBuilder url = new StringBuilder();
+        url.append("jdbc:neo4j://").append(params.getHost()).append(":").append(params.getPort());
+        String database = params.getDatabase();
+        if (database != null && !database.trim().isEmpty()) {
+            url.append("?database=").append(database.trim());
+        }
+        return url.toString();
     }
 
     @Override
@@ -82,11 +95,36 @@ public class Neo4jAgent extends BaseDatabaseAgent {
     public List<TableInfo> listTables(String schema) {
         return unchecked(() -> {
             Connection conn = requireConnected();
+            // Try JDBC metadata first — the driver handles version compatibility.
             List<TableInfo> result = new ArrayList<>();
-            try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("CALL db.labels()")) {
+            DatabaseMetaData meta = conn.getMetaData();
+            try (ResultSet rs = meta.getTables(null, blankToNull(schema), "%", new String[]{"TABLE", "VIEW"})) {
                 while (rs.next()) {
-                    result.add(new TableInfo(rs.getString(1), "TABLE", null));
+                    String name = rs.getString("TABLE_NAME");
+                    String type = rs.getString("TABLE_TYPE");
+                    String comment = getStringOrNull(rs, "REMARKS");
+                    if (name != null && !name.isEmpty()) {
+                        result.add(new TableInfo(name, type, comment));
+                    }
+                }
+            } catch (Exception ignored) {
+                // Fall through to Cypher fallback
+            }
+            // Fallback: use Cypher for drivers that don't implement getTables().
+            if (result.isEmpty()) {
+                try (Statement stmt = conn.createStatement();
+                     ResultSet rs = stmt.executeQuery("CALL db.labels()")) {
+                    while (rs.next()) {
+                        String label = getStringOrDefault(rs, "label", "");
+                        if (label.isEmpty()) {
+                            label = rs.getString(1);
+                        }
+                        if (label != null && !label.isEmpty()) {
+                            result.add(new TableInfo(label, "TABLE", null));
+                        }
+                    }
+                } catch (Exception ignored) {
+                    // Cypher fallback also failed
                 }
             }
             result.sort(Comparator.comparing(TableInfo::getName));
@@ -99,49 +137,90 @@ public class Neo4jAgent extends BaseDatabaseAgent {
         return unchecked(() -> {
             Connection conn = requireConnected();
             List<ColumnInfo> result = new ArrayList<>();
-            try (Statement stmt = conn.createStatement();
-                 ResultSet rs = stmt.executeQuery("CALL db.schema.nodeTypeProperties()")) {
+            // Try JDBC metadata first.
+            DatabaseMetaData meta = conn.getMetaData();
+            Set<String> primaryKeys = new LinkedHashSet<>();
+            try (ResultSet rs = meta.getPrimaryKeys(null, blankToNull(schema), table)) {
                 while (rs.next()) {
-                    String nodeLabels = rs.getString("nodeLabels");
-                    if (nodeLabels == null) {
-                        nodeLabels = "";
+                    String pkColumn = rs.getString("COLUMN_NAME");
+                    if (pkColumn != null) {
+                        primaryKeys.add(pkColumn);
                     }
-                    if (!nodeLabels.contains(table)) {
+                }
+            } catch (Exception ignored) {
+                // Fall through
+            }
+            try (ResultSet rs = meta.getColumns(null, blankToNull(schema), table, "%")) {
+                while (rs.next()) {
+                    String name = rs.getString("COLUMN_NAME");
+                    if (name == null || name.isEmpty()) {
                         continue;
                     }
-
-                    String propertyName = rs.getString("propertyName");
-                    if (propertyName == null) {
-                        continue;
+                    String type = rs.getString("TYPE_NAME");
+                    if (type == null) {
+                        type = "Unknown";
                     }
-                    String propertyTypes = rs.getString("propertyTypes");
-                    if (propertyTypes == null) {
-                        propertyTypes = "Unknown";
-                    }
-                    boolean isNullable;
+                    boolean nullable = true;
                     try {
-                        isNullable = !rs.getBoolean("mandatory");
+                        nullable = "YES".equals(rs.getString("IS_NULLABLE"));
                     } catch (Exception ignored) {
-                        isNullable = true;
+                        // keep default
                     }
-
+                    String defaultValue = getStringOrNull(rs, "COLUMN_DEF");
+                    String comment = getStringOrNull(rs, "REMARKS");
                     result.add(new ColumnInfo(
-                        propertyName,
-                        propertyTypes,
-                        isNullable,
-                        null,
-                        false,
-                        null,
-                        null,
-                        null,
-                        null,
-                        null
+                        name, type, nullable, defaultValue,
+                        primaryKeys.contains(name),
+                        comment, null, null, null, null
                     ));
+                }
+            } catch (Exception ignored) {
+                // Fall through to Cypher fallback
+            }
+            // Fallback: use Cypher for drivers that don't implement getColumns().
+            if (result.isEmpty()) {
+                try (Statement stmt = conn.createStatement();
+                     ResultSet rs = stmt.executeQuery("CALL db.schema.nodeTypeProperties()")) {
+                    while (rs.next()) {
+                        String nodeLabels = rs.getString("nodeLabels");
+                        if (nodeLabels == null) {
+                            nodeLabels = "";
+                        }
+                        if (!nodeLabels.contains(table)) {
+                            continue;
+                        }
+                        String propertyName = rs.getString("propertyName");
+                        if (propertyName == null) {
+                            continue;
+                        }
+                        String propertyTypes = rs.getString("propertyTypes");
+                        if (propertyTypes == null) {
+                            propertyTypes = "Unknown";
+                        }
+                        boolean isNullable;
+                        try {
+                            isNullable = !rs.getBoolean("mandatory");
+                        } catch (Exception ignored) {
+                            isNullable = true;
+                        }
+                        result.add(new ColumnInfo(
+                            propertyName, propertyTypes, isNullable,
+                            null, false, null, null, null, null, null
+                        ));
+                    }
+                } catch (Exception ignored) {
+                    // Cypher fallback also failed
                 }
             }
             result.sort(Comparator.comparing(ColumnInfo::getName));
             return result;
         });
+    }
+
+    private static String blankToNull(String value) {
+        if (value == null) return null;
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     @Override
