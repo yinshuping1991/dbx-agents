@@ -15,7 +15,7 @@ public final class DdlBuilder {
         List<IndexInfo> indexes,
         List<ForeignKeyInfo> foreignKeys
     ) {
-        return buildTableDdl(schema, table, columns, indexes, foreignKeys, false);
+        return buildTableDdl(schema, table, columns, indexes, foreignKeys, false, false);
     }
 
     public static String buildTableDdl(
@@ -25,6 +25,18 @@ public final class DdlBuilder {
         List<IndexInfo> indexes,
         List<ForeignKeyInfo> foreignKeys,
         boolean useBacktick
+    ) {
+        return buildTableDdl(schema, table, columns, indexes, foreignKeys, useBacktick, false);
+    }
+
+    public static String buildTableDdl(
+        String schema,
+        String table,
+        List<ColumnInfo> columns,
+        List<IndexInfo> indexes,
+        List<ForeignKeyInfo> foreignKeys,
+        boolean useBacktick,
+        boolean includeColumnComments
     ) {
         String tableRef = qualifiedName(schema, table, useBacktick);
         List<String> columnLines = new ArrayList<>();
@@ -69,6 +81,21 @@ public final class DdlBuilder {
         ddl.append(join(columnLines, ",\n"));
         ddl.append("\n);\n");
 
+        if (includeColumnComments) {
+            for (ColumnInfo column : columns) {
+                if (!notBlank(column.getComment())) {
+                    continue;
+                }
+                ddl.append("\nCOMMENT ON COLUMN ");
+                ddl.append(tableRef);
+                ddl.append(".");
+                ddl.append(quoteIdent(column.getName(), useBacktick));
+                ddl.append(" IS '");
+                ddl.append(sqlStringBody(column.getComment()));
+                ddl.append("';");
+            }
+        }
+
         for (IndexInfo index : indexes) {
             if (index.getIs_primary()) {
                 continue;
@@ -100,7 +127,7 @@ public final class DdlBuilder {
                 }
                 ddl.append(quoteIdent(index.getName(), useBacktick));
                 ddl.append(" IS '");
-                ddl.append(index.getComment().replace("'", "''"));
+                ddl.append(sqlStringBody(index.getComment()));
                 ddl.append("';");
             }
         }
@@ -149,6 +176,10 @@ public final class DdlBuilder {
 
     private static boolean notBlank(String value) {
         return value != null && !value.trim().isEmpty();
+    }
+
+    private static String sqlStringBody(String value) {
+        return value.replace("'", "''");
     }
 
     private static String join(List<String> values, String separator) {

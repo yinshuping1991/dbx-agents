@@ -202,6 +202,38 @@ class CommonJavaCompatibilityTest {
         );
     }
 
+    @Test
+    void buildsTableDdlWithColumnComments() {
+        String ddl = DdlBuilder.buildTableDdl(
+            "public",
+            "orders",
+            Collections.singletonList(new ColumnInfo(
+                "display_name",
+                "varchar",
+                true,
+                null,
+                false,
+                null,
+                "User's display name",
+                null,
+                null,
+                64
+            )),
+            Collections.emptyList(),
+            Collections.emptyList(),
+            false,
+            true
+        );
+
+        assertEquals(
+            "CREATE TABLE \"public\".\"orders\" (\n" +
+                "  \"display_name\" varchar(64)\n" +
+                ");\n\n" +
+                "COMMENT ON COLUMN \"public\".\"orders\".\"display_name\" IS 'User''s display name';",
+            ddl
+        );
+    }
+
     private static class MinimalAgent implements DatabaseAgent {
         @Override
         public void connect(ConnectParams params) {

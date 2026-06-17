@@ -228,7 +228,7 @@ public abstract class PostgresLikeAgent extends AbstractJdbcAgent {
             foreignKeys = Collections.emptyList();
         }
 
-        return DdlBuilder.buildTableDdl(schema, table, getColumns(schema, table), indexes, foreignKeys, mysqlCompatMode);
+        return DdlBuilder.buildTableDdl(schema, table, getColumns(schema, table), indexes, foreignKeys, mysqlCompatMode, true);
     }
 
     @Override
