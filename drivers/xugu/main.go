@@ -954,11 +954,11 @@ func (s *server) getObjectSource(schema, name, objectType string) (map[string]an
 	return map[string]any{"name": name, "object_type": objectType, "schema": schema, "source": builder.String()}, rows.Err()
 }
 
-func (s *server) getTableDDL(schema, table string) (map[string]any, error) {
+func (s *server) getTableDDL(schema, table string) (string, error) {
 	var err error
 	schema, err = s.normalizeSchema(schema)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	var ddl string
 	rows, err := s.queryRows("SELECT TO_CHAR(DBMS_METADATA.GET_DDL('TABLE', ?, ?)) FROM DUAL", []any{strings.ToUpper(table), schema})
@@ -966,15 +966,15 @@ func (s *server) getTableDDL(schema, table string) (map[string]any, error) {
 		defer rows.Close()
 		if rows.Next() {
 			if scanErr := rows.Scan(&ddl); scanErr == nil && strings.TrimSpace(ddl) != "" {
-				return map[string]any{"ddl": ddl}, rows.Err()
+				return ddl, rows.Err()
 			}
 		}
 	}
 	ddl, err = s.buildTableDDL(schema, table)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
-	return map[string]any{"ddl": ddl}, nil
+	return ddl, nil
 }
 
 func (s *server) getExplainInfo(sqlText string) (string, error) {

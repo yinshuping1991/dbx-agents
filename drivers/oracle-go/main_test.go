@@ -70,6 +70,58 @@ func TestEmptyResultSlicesMarshalAsArrays(t *testing.T) {
 	}
 }
 
+func TestGetTableDDLResultMarshalsAsString(t *testing.T) {
+	data, err := json.Marshal("CREATE TABLE HR.ORDERS (ID NUMBER)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ddl string
+	if err := json.Unmarshal(data, &ddl); err != nil {
+		t.Fatalf("get_table_ddl result must deserialize as a string: %v", err)
+	}
+}
+
+func TestNormalizeDDLObjectType(t *testing.T) {
+	tests := map[string]string{
+		"":                  "",
+		"table":             "TABLE",
+		"VIEW":              "VIEW",
+		"materialized view": "MATERIALIZED_VIEW",
+		"MATERIALIZED_VIEW": "MATERIALIZED_VIEW",
+		"procedure":         "",
+	}
+	for input, want := range tests {
+		if got := normalizeDDLObjectType(input); got != want {
+			t.Fatalf("normalizeDDLObjectType(%q) = %q, want %q", input, got, want)
+		}
+	}
+}
+
+func TestOracleColumnTypeDDL(t *testing.T) {
+	charLen := 64
+	precision := 10
+	scale := 2
+	zeroScale := 0
+
+	tests := []struct {
+		name   string
+		column columnInfo
+		want   string
+	}{
+		{name: "varchar", column: columnInfo{DataType: "VARCHAR2", CharacterMaximumLength: &charLen}, want: "VARCHAR2(64)"},
+		{name: "number scale", column: columnInfo{DataType: "NUMBER", NumericPrecision: &precision, NumericScale: &scale}, want: "NUMBER(10,2)"},
+		{name: "number zero scale", column: columnInfo{DataType: "NUMBER", NumericPrecision: &precision, NumericScale: &zeroScale}, want: "NUMBER(10)"},
+		{name: "timestamp preserves precision", column: columnInfo{DataType: "TIMESTAMP(6)"}, want: "TIMESTAMP(6)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := oracleColumnTypeDDL(tt.column); got != tt.want {
+				t.Fatalf("oracleColumnTypeDDL() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestBuildDSNUsesConnectionStringWhenProvided(t *testing.T) {
 	dsn := buildDSN(connectParams{ConnectionString: "oracle://scott:tiger@db.example.com:1521/ORCLPDB1"})
 

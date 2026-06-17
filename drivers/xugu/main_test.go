@@ -69,6 +69,17 @@ func TestEmptyResultSlicesMarshalAsArrays(t *testing.T) {
 	}
 }
 
+func TestGetTableDDLResultMarshalsAsString(t *testing.T) {
+	data, err := json.Marshal("CREATE TABLE SYSDBA.ORDERS (ID INT)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var ddl string
+	if err := json.Unmarshal(data, &ddl); err != nil {
+		t.Fatalf("get_table_ddl result must deserialize as a string: %v", err)
+	}
+}
+
 func TestBuildDSNUsesConnectionStringWhenProvided(t *testing.T) {
 	dsn := buildDSN(connectParams{ConnectionString: "IP=db.example.com;DB=SYSTEM;User=SYSDBA;PWD=secret;Port=5138"})
 

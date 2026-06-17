@@ -305,7 +305,8 @@ func (s *server) dispatch(method string, params map[string]json.RawMessage) (any
 	case "get_table_ddl":
 		schema := stringParam(params, "schema")
 		table := stringParam(params, "table")
-		ddl, err := s.getTableDDL(schema, table)
+		objectType := stringParam(params, "object_type")
+		ddl, err := s.getTableDDL(schema, table, objectType)
 		return ddl, false, err
 	case "execute_query":
 		var opts queryOptions
@@ -841,22 +842,174 @@ ORDER BY LINE`, []any{schema, strings.ToUpper(name), upperType})
 	return map[string]any{"name": name, "object_type": objectType, "schema": schema, "source": builder.String()}, rows.Err()
 }
 
-func (s *server) getTableDDL(schema, table string) (map[string]any, error) {
+func (s *server) getTableDDL(schema, table, objectType string) (string, error) {
 	var err error
 	schema, err = s.normalizeSchema(schema)
 	if err != nil {
-		return nil, err
+		return "", err
 	}
 	db, err := s.requireDB()
 	if err != nil {
-		return nil, err
+		return "", err
+	}
+	objectType, err = s.resolveDDLObjectType(schema, table, objectType)
+	if err != nil {
+		return "", err
+	}
+	if objectType == "VIEW" {
+		return s.buildViewDDL(schema, table)
 	}
 	var ddl string
-	err = db.QueryRow("SELECT DBMS_METADATA.GET_DDL('TABLE', :1, :2) FROM DUAL", strings.ToUpper(table), schema).Scan(&ddl)
-	if err != nil {
-		return nil, err
+	err = db.QueryRow("SELECT DBMS_METADATA.GET_DDL(:1, :2, :3) FROM DUAL", objectType, strings.ToUpper(table), schema).Scan(&ddl)
+	if err == nil && strings.TrimSpace(ddl) != "" {
+		return ddl, nil
 	}
-	return map[string]any{"ddl": ddl}, nil
+	if objectType == "TABLE" {
+		return s.buildTableDDL(schema, table)
+	}
+	return "", err
+}
+
+func (s *server) resolveDDLObjectType(schema, name, requested string) (string, error) {
+	objectType := normalizeDDLObjectType(requested)
+	if objectType != "" {
+		return objectType, nil
+	}
+	db, err := s.requireDB()
+	if err != nil {
+		return "", err
+	}
+	err = db.QueryRow(`
+SELECT OBJECT_TYPE
+FROM (
+  SELECT OBJECT_TYPE
+  FROM ALL_OBJECTS
+  WHERE OWNER = :1
+    AND OBJECT_NAME = :2
+    AND OBJECT_TYPE IN ('TABLE', 'VIEW', 'MATERIALIZED VIEW')
+  ORDER BY CASE OBJECT_TYPE WHEN 'TABLE' THEN 0 WHEN 'VIEW' THEN 1 ELSE 2 END
+)
+WHERE ROWNUM = 1`, schema, strings.ToUpper(name)).Scan(&objectType)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("object not found: %s.%s", schema, name)
+	}
+	if err != nil {
+		return "", err
+	}
+	return normalizeDDLObjectType(objectType), nil
+}
+
+func normalizeDDLObjectType(value string) string {
+	switch strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(value), " ", "_")) {
+	case "TABLE":
+		return "TABLE"
+	case "VIEW":
+		return "VIEW"
+	case "MATERIALIZED_VIEW":
+		return "MATERIALIZED_VIEW"
+	default:
+		return ""
+	}
+}
+
+func (s *server) buildViewDDL(schema, name string) (string, error) {
+	db, err := s.requireDB()
+	if err != nil {
+		return "", err
+	}
+	var source string
+	err = db.QueryRow(
+		"SELECT TEXT FROM ALL_VIEWS WHERE OWNER = :1 AND VIEW_NAME = :2",
+		schema, strings.ToUpper(name),
+	).Scan(&source)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("view not found: %s.%s", schema, name)
+	}
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("CREATE OR REPLACE VIEW %s.%s AS\n%s", quoteIdentifier(schema), quoteIdentifier(name), strings.TrimSpace(source)), nil
+}
+
+func (s *server) buildTableDDL(schema, table string) (string, error) {
+	columns, err := s.getColumns(schema, table)
+	if err != nil {
+		return "", err
+	}
+	if len(columns) == 0 {
+		return "", fmt.Errorf("table not found: %s.%s", schema, table)
+	}
+	var builder strings.Builder
+	builder.WriteString("CREATE TABLE ")
+	builder.WriteString(quoteIdentifier(schema))
+	builder.WriteByte('.')
+	builder.WriteString(quoteIdentifier(table))
+	builder.WriteString(" (\n")
+	for i, column := range columns {
+		if i > 0 {
+			builder.WriteString(",\n")
+		}
+		builder.WriteString("  ")
+		builder.WriteString(quoteIdentifier(column.Name))
+		builder.WriteByte(' ')
+		builder.WriteString(oracleColumnTypeDDL(column))
+		if column.ColumnDefault != nil && strings.TrimSpace(*column.ColumnDefault) != "" {
+			builder.WriteString(" DEFAULT ")
+			builder.WriteString(strings.TrimSpace(*column.ColumnDefault))
+		}
+		if !column.IsNullable {
+			builder.WriteString(" NOT NULL")
+		}
+	}
+	primary := make([]string, 0)
+	for _, column := range columns {
+		if column.IsPrimaryKey {
+			primary = append(primary, quoteIdentifier(column.Name))
+		}
+	}
+	if len(primary) > 0 {
+		builder.WriteString(",\n  PRIMARY KEY (")
+		builder.WriteString(strings.Join(primary, ", "))
+		builder.WriteByte(')')
+	}
+	builder.WriteString("\n)")
+	return builder.String(), nil
+}
+
+func oracleColumnTypeDDL(column columnInfo) string {
+	dataType := strings.ToUpper(strings.TrimSpace(column.DataType))
+	if dataType == "" {
+		return "VARCHAR2(4000)"
+	}
+	if strings.Contains(dataType, "(") {
+		return dataType
+	}
+	if isOracleCharacterType(dataType) && column.CharacterMaximumLength != nil && *column.CharacterMaximumLength > 0 {
+		return fmt.Sprintf("%s(%d)", dataType, *column.CharacterMaximumLength)
+	}
+	if dataType == "NUMBER" {
+		if column.NumericPrecision != nil && *column.NumericPrecision > 0 {
+			if column.NumericScale != nil && *column.NumericScale != 0 {
+				return fmt.Sprintf("NUMBER(%d,%d)", *column.NumericPrecision, *column.NumericScale)
+			}
+			return fmt.Sprintf("NUMBER(%d)", *column.NumericPrecision)
+		}
+		return "NUMBER"
+	}
+	if (dataType == "FLOAT" || dataType == "BINARY_FLOAT" || dataType == "BINARY_DOUBLE") &&
+		column.NumericPrecision != nil && *column.NumericPrecision > 0 {
+		return fmt.Sprintf("%s(%d)", dataType, *column.NumericPrecision)
+	}
+	return dataType
+}
+
+func isOracleCharacterType(dataType string) bool {
+	switch dataType {
+	case "CHAR", "VARCHAR2", "VARCHAR", "NCHAR", "NVARCHAR2", "RAW":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s *server) getExplainInfo(sqlText string) (string, error) {
