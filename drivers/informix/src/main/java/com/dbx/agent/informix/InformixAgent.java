@@ -34,14 +34,35 @@ public final class InformixAgent extends BaseDatabaseAgent {
     }
 
     public static String buildJdbcUrl(ConnectParams params) {
-        String extraParams = trimEnd(trimStart(params.getUrl_params().trim(), ':', ';'), ';');
-        String database = params.getDatabase().trim().isEmpty() ? "sysmaster" : params.getDatabase().trim();
-        String serverParam = containsIgnoreCase(extraParams, "INFORMIXSERVER=") ? "" : "INFORMIXSERVER=" + defaultInformixServer(params.getHost());
+        String rawUrlParams = params.getUrl_params();
+        String extraParams = rawUrlParams == null ? "" : trimEnd(trimStart(rawUrlParams.trim(), ':', ';'), ';');
+        String rawDatabase = params.getDatabase();
+        String database = rawDatabase == null || rawDatabase.trim().isEmpty()
+            ? "sysmaster" : rawDatabase.trim();
+
+        // Determine INFORMIXSERVER: from dedicated field, url_params, or default
+        String informixServer = params.getInformix_server();
+        informixServer = informixServer == null ? "" : informixServer.trim();
+        if (informixServer.isEmpty()) {
+            informixServer = containsIgnoreCase(extraParams, "INFORMIXSERVER=") ? "" : defaultInformixServer(params.getHost());
+        }
+        String serverParam = informixServer.isEmpty() ? "" : "INFORMIXSERVER=" + informixServer;
+
+        // Add CLIENT_LOCALE and DB_LOCALE defaults if not already specified
+        if (!containsIgnoreCase(extraParams, "CLIENT_LOCALE=")) {
+            String localeParam = "CLIENT_LOCALE=en_US.utf8";
+            extraParams = extraParams.isEmpty() ? localeParam : extraParams + ";" + localeParam;
+        }
+        if (!containsIgnoreCase(extraParams, "DB_LOCALE=")) {
+            String localeParam = "DB_LOCALE=en_US.utf8";
+            extraParams = extraParams.isEmpty() ? localeParam : extraParams + ";" + localeParam;
+        }
+
         List<String> jdbcParams = new ArrayList<>();
-        if (!serverParam.isBlank()) {
+        if (!serverParam.isEmpty()) {
             jdbcParams.add(serverParam);
         }
-        if (!extraParams.isBlank()) {
+        if (!extraParams.isEmpty()) {
             jdbcParams.add(extraParams);
         }
         return "jdbc:informix-sqli://" + params.getHost() + ":" + params.getPort() + "/" + database + ":"
@@ -115,17 +136,26 @@ public final class InformixAgent extends BaseDatabaseAgent {
 
     @Override
     public void connect(ConnectParams params) {
+        String url = buildJdbcUrl(params);
         uncheckedVoid(() -> {
             Class.forName("com.informix.jdbc.IfxDriver");
-            connection = DriverManager.getConnection(buildJdbcUrl(params), params.getUsername(), params.getPassword());
+            try {
+                connection = DriverManager.getConnection(url, params.getUsername(), params.getPassword());
+            } catch (SQLException e) {
+                throw new SQLException(
+                    "Informix connection failed.\nURL: " + url.replaceAll("//[^@]+@", "//***@") + "\nError: " + e.getMessage(),
+                    e.getSQLState(), e.getErrorCode()
+                );
+            }
         });
     }
 
     @Override
     public boolean testConnection(ConnectParams params) {
+        String url = buildJdbcUrl(params);
         return unchecked(() -> {
             Class.forName("com.informix.jdbc.IfxDriver");
-            try (Connection conn = DriverManager.getConnection(buildJdbcUrl(params), params.getUsername(), params.getPassword())) {
+            try (Connection conn = DriverManager.getConnection(url, params.getUsername(), params.getPassword())) {
                 return conn.isValid(5);
             }
         });
