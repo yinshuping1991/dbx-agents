@@ -59,6 +59,36 @@ class StandardJdbcMetadataTest {
     }
 
     @Test
+    void listsSchemasWhenConnectionGetSchemaThrowsAbstractMethodError() {
+        Connection conn = connection(
+            rows(row("TABLE_SCHEM", "APP"), row("TABLE_SCHEM", "PUBLIC")),
+            rows(),
+            rows(),
+            rows(),
+            rows(),
+            rows(),
+            UnsupportedSchemaCall.ABSTRACT_METHOD_ERROR
+        );
+
+        assertEquals(Arrays.asList("APP", "PUBLIC"), StandardJdbcMetadata.INSTANCE.listSchemas(conn, profile));
+    }
+
+    @Test
+    void listsSchemasWithEmptyResultWhenDriverSchemaMetadataIsUnsupported() {
+        Connection conn = connection(
+            rows(),
+            rows(),
+            rows(),
+            rows(),
+            rows(),
+            rows(),
+            UnsupportedSchemaCall.METADATA_AND_CONNECTION_ABSTRACT_METHOD_ERROR
+        );
+
+        assertEquals(Collections.emptyList(), StandardJdbcMetadata.INSTANCE.listSchemas(conn, profile));
+    }
+
+    @Test
     void listsTablesWithNormalizedTypesAndStableOrdering() {
         Connection conn = connection(
             rows(),
@@ -237,7 +267,29 @@ class StandardJdbcMetadataTest {
         ResultSet foreignKeys,
         boolean unsupportedGetSchema
     ) {
-        return connection(schemas, tables, primaryKeys, columns, indexes, foreignKeys, unsupportedGetSchema, null, null);
+        return connection(
+            schemas,
+            tables,
+            primaryKeys,
+            columns,
+            indexes,
+            foreignKeys,
+            unsupportedGetSchema ? UnsupportedSchemaCall.RUNTIME_EXCEPTION : UnsupportedSchemaCall.NONE,
+            null,
+            null
+        );
+    }
+
+    private static Connection connection(
+        ResultSet schemas,
+        ResultSet tables,
+        ResultSet primaryKeys,
+        ResultSet columns,
+        ResultSet indexes,
+        ResultSet foreignKeys,
+        UnsupportedSchemaCall unsupportedSchemaCall
+    ) {
+        return connection(schemas, tables, primaryKeys, columns, indexes, foreignKeys, unsupportedSchemaCall, null, null);
     }
 
     private static Connection connection(
@@ -250,7 +302,7 @@ class StandardJdbcMetadataTest {
         ResultSet tableTypes,
         AtomicReference<String[]> capturedTableTypes
     ) {
-        return connection(schemas, tables, primaryKeys, columns, indexes, foreignKeys, false, tableTypes, capturedTableTypes);
+        return connection(schemas, tables, primaryKeys, columns, indexes, foreignKeys, UnsupportedSchemaCall.NONE, tableTypes, capturedTableTypes);
     }
 
     private static Connection connection(
@@ -260,7 +312,7 @@ class StandardJdbcMetadataTest {
         ResultSet columns,
         ResultSet indexes,
         ResultSet foreignKeys,
-        boolean unsupportedGetSchema,
+        UnsupportedSchemaCall unsupportedSchemaCall,
         ResultSet tableTypes,
         AtomicReference<String[]> capturedTableTypes
     ) {
@@ -269,6 +321,9 @@ class StandardJdbcMetadataTest {
             public Object handle(Method method, Object[] args) {
                 String name = method.getName();
                 if ("getSchemas".equals(name)) {
+                    if (unsupportedSchemaCall == UnsupportedSchemaCall.METADATA_AND_CONNECTION_ABSTRACT_METHOD_ERROR) {
+                        throw new AbstractMethodError("Unimplemented method: getSchemas()");
+                    }
                     return schemas;
                 }
                 if ("getTables".equals(name)) {
@@ -305,8 +360,12 @@ class StandardJdbcMetadataTest {
                     return meta;
                 }
                 if ("getSchema".equals(method.getName())) {
-                    if (unsupportedGetSchema) {
+                    if (unsupportedSchemaCall == UnsupportedSchemaCall.RUNTIME_EXCEPTION) {
                         throw new RuntimeException("Unimplemented method: getSchema()");
+                    }
+                    if (unsupportedSchemaCall == UnsupportedSchemaCall.ABSTRACT_METHOD_ERROR
+                        || unsupportedSchemaCall == UnsupportedSchemaCall.METADATA_AND_CONNECTION_ABSTRACT_METHOD_ERROR) {
+                        throw new AbstractMethodError("Unimplemented method: getSchema()");
                     }
                     return null;
                 }
@@ -401,5 +460,12 @@ class StandardJdbcMetadataTest {
 
     private interface MethodHandler {
         Object handle(Method method, Object[] args);
+    }
+
+    private enum UnsupportedSchemaCall {
+        NONE,
+        RUNTIME_EXCEPTION,
+        ABSTRACT_METHOD_ERROR,
+        METADATA_AND_CONNECTION_ABSTRACT_METHOD_ERROR
     }
 }

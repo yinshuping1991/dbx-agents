@@ -46,21 +46,16 @@ public final class StandardJdbcMetadata {
             Set<String> names = new LinkedHashSet<>();
             DatabaseMetaData meta = conn.getMetaData();
             try {
-                try (ResultSet rs = meta.getSchemas(null, null)) {
-                    while (rs.next()) {
-                        addNonBlank(names, rs.getString("TABLE_SCHEM"));
-                    }
-                }
-            } catch (Exception first) {
-                try (ResultSet rs = meta.getSchemas()) {
-                    while (rs.next()) {
-                        addNonBlank(names, rs.getString("TABLE_SCHEM"));
-                    }
+                appendSchemas(names, meta.getSchemas(null, null));
+            } catch (Exception | AbstractMethodError first) {
+                try {
+                    appendSchemas(names, meta.getSchemas());
+                } catch (Exception | AbstractMethodError ignored) {
                 }
             }
             try {
                 addNonBlank(names, conn.getSchema());
-            } catch (Exception ignored) {
+            } catch (Exception | AbstractMethodError ignored) {
             }
 
             List<String> result = new ArrayList<>();
@@ -246,6 +241,14 @@ public final class StandardJdbcMetadata {
         } catch (Exception ignored) {
         }
         return keys;
+    }
+
+    private static void appendSchemas(Set<String> names, ResultSet rs) throws Exception {
+        try (ResultSet closeable = rs) {
+            while (closeable.next()) {
+                addNonBlank(names, closeable.getString("TABLE_SCHEM"));
+            }
+        }
     }
 
     private void appendColumns(
