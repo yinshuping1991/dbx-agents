@@ -72,7 +72,7 @@ class TDengineAgentMetadataTest {
         agent.executeQuery("SELECT 1", "power", new ExecuteQueryOptions());
 
         Assertions.assertEquals(
-            Arrays.asList("execute", "setMaxRows:10001", "execute"),
+            Arrays.asList("setMaxRows:10001", "execute"),
             JdbcAgentFake.calls
         );
     }
