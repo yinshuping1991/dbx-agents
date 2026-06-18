@@ -329,12 +329,12 @@ public abstract class PostgresLikeAgent extends AbstractJdbcAgent {
                 "FROM pg_catalog.pg_constraint co " +
                 "JOIN pg_catalog.pg_class c ON c.oid = co.conrelid " +
                 "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace " +
-                "JOIN LATERAL (SELECT unnest(co.conkey) AS attnum, generate_series(1, array_length(co.conkey, 1)) AS ord) AS key ON true " +
-                "JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum = key.attnum " +
+                "JOIN LATERAL (SELECT unnest(co.conkey) AS attnum, generate_series(1, array_length(co.conkey, 1)) AS ord) AS pk_cols ON true " +
+                "JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid AND a.attnum = pk_cols.attnum " +
                 "WHERE co.contype = 'p' " +
                 "AND n.nspname = ? " +
                 "AND c.relname = ? " +
-                "ORDER BY key.ord";
+                "ORDER BY pk_cols.ord";
             try (java.sql.PreparedStatement stmt = requireConnection().prepareStatement(sql)) {
                 stmt.setString(1, schema);
                 stmt.setString(2, table);

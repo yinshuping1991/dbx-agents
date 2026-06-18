@@ -40,6 +40,8 @@ class PostgresLikeAgentTest {
         assertTrue(sql.contains("pg_catalog.pg_attribute"), sql);
         assertTrue(sql.contains("pg_catalog.pg_constraint"), sql);
         assertTrue(sql.contains("pg_catalog.pg_trigger"), sql);
+        assertFalse(sql.contains(" AS key "), sql);
+        assertFalse(sql.contains(" key."), sql);
     }
 
     @Test
