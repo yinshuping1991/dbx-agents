@@ -297,6 +297,7 @@ public final class Db2Agent extends BaseDatabaseAgent {
             this::setSchemaSQL,
             options.getMaxRows(),
             options.getFetchSize(),
+            options.getTimeoutSecs(),
             this::stringResultValue
         );
     }

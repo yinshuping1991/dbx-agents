@@ -320,6 +320,7 @@ public final class SundbAgent extends BaseDatabaseAgent {
             this::setSchemaSQL,
             options.getMaxRows(),
             options.getFetchSize(),
+            options.getTimeoutSecs(),
             this::getResultValue
         );
     }

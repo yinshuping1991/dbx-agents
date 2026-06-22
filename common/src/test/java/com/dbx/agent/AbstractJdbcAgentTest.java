@@ -71,6 +71,28 @@ class AbstractJdbcAgentTest {
     }
 
     @Test
+    void delegatesQueryTimeoutToStatement() {
+        TrackingConnection tracking = new TrackingConnection();
+        TestAgent agent = new TestAgent(tracking);
+        agent.connect(new ConnectParams());
+
+        agent.executeQuery("SELECT VALUE", null, new ExecuteQueryOptions(25, 7, 12));
+
+        assertEquals(Arrays.asList("setMaxRows:26", "setQueryTimeout:12", "setFetchSize:7", "execute:SELECT VALUE"), tracking.calls);
+    }
+
+    @Test
+    void delegatesPagedQueryTimeoutToStatement() {
+        TrackingConnection tracking = new TrackingConnection();
+        TestAgent agent = new TestAgent(tracking);
+        agent.connect(new ConnectParams());
+
+        agent.executeQueryPage("SELECT VALUE", null, new QueryPageOptions(10, 7, 25, 12));
+
+        assertEquals(Arrays.asList("setQueryTimeout:12", "setFetchSize:7", "execute:SELECT VALUE"), tracking.calls);
+    }
+
+    @Test
     void preservesPlSqlBlockTerminatorDuringQueryExecution() {
         TrackingConnection tracking = new TrackingConnection();
         TestAgent agent = new TestAgent(tracking);
@@ -316,6 +338,10 @@ class AbstractJdbcAgentTest {
                     }
                     if ("setFetchSize".equals(name)) {
                         calls.add("setFetchSize:" + args[0]);
+                        return null;
+                    }
+                    if ("setQueryTimeout".equals(name)) {
+                        calls.add("setQueryTimeout:" + args[0]);
                         return null;
                     }
                     if ("close".equals(name)) {

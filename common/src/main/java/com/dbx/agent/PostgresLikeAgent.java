@@ -37,6 +37,7 @@ public abstract class PostgresLikeAgent extends AbstractJdbcAgent {
             this::setSchemaSQL,
             options.getMaxRows(),
             options.getFetchSize(),
+            options.getTimeoutSecs(),
             geometryAwareResolver()
         );
     }

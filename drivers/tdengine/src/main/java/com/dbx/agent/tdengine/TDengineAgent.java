@@ -178,6 +178,7 @@ public final class TDengineAgent extends BaseDatabaseAgent {
             this::setSchemaSQL,
             options.getMaxRows(),
             options.getFetchSize(),
+            options.getTimeoutSecs(),
             this::tdengineResultValue
         );
     }

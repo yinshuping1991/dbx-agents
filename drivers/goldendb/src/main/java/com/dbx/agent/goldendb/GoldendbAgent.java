@@ -319,6 +319,7 @@ public final class GoldendbAgent extends BaseDatabaseAgent {
             this::setSchemaSQL,
             options.getMaxRows(),
             options.getFetchSize(),
+            options.getTimeoutSecs(),
             this::resultValue
         );
     }

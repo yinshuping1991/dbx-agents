@@ -51,6 +51,19 @@ public final class JdbcExecutor {
         Integer fetchSize,
         ResultValueReader valueReader
     ) {
+        return execute(conn, sql, schema, setSchemaSql, maxRows, fetchSize, 0, valueReader);
+    }
+
+    public QueryResult execute(
+        Connection conn,
+        String sql,
+        String schema,
+        Function<String, String> setSchemaSql,
+        int maxRows,
+        Integer fetchSize,
+        int timeoutSecs,
+        ResultValueReader valueReader
+    ) {
         return unchecked(() -> {
             String trimmedSql = trimSql(sql);
             String upperSql = trimmedSql.toUpperCase(Locale.ROOT).trim();
@@ -76,6 +89,7 @@ public final class JdbcExecutor {
             try (Statement stmt = conn.createStatement()) {
                 int effectiveMaxRows = Math.max(maxRows, 1);
                 stmt.setMaxRows(effectiveMaxRows + 1);
+                applyQueryTimeout(stmt, timeoutSecs);
                 if (fetchSize != null && fetchSize > 0) {
                     stmt.setFetchSize(fetchSize);
                 }
@@ -188,6 +202,7 @@ public final class JdbcExecutor {
 
             Statement stmt = conn.createStatement();
             try {
+                applyQueryTimeout(stmt, options.getTimeoutSecs());
                 if (options.getFetchSize() != null && options.getFetchSize() > 0) {
                     stmt.setFetchSize(options.getFetchSize());
                 }
@@ -505,6 +520,12 @@ public final class JdbcExecutor {
         }
         try (Statement stmt = conn.createStatement()) {
             stmt.execute(schemaSql);
+        }
+    }
+
+    private static void applyQueryTimeout(Statement stmt, int timeoutSecs) throws SQLException {
+        if (timeoutSecs > 0) {
+            stmt.setQueryTimeout(timeoutSecs);
         }
     }
 

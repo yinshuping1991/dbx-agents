@@ -38,6 +38,7 @@
     "handshake",
     "connect",
     "test_connection",
+    "validate_connection",
     "list_databases",
     "list_schemas",
     "list_tables",

@@ -223,6 +223,7 @@ public final class AccessAgent extends BaseDatabaseAgent {
             this::setSchemaSQL,
             options.getMaxRows(),
             options.getFetchSize(),
+            options.getTimeoutSecs(),
             JdbcExecutor.INSTANCE::defaultResultValue
         );
     }

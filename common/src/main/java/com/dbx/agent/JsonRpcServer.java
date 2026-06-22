@@ -85,6 +85,20 @@ public final class JsonRpcServer {
             }
             return Collections.singletonMap("ok", true);
         }
+        if (AgentProtocol.METHOD_VALIDATE_CONNECTION.equals(method)) {
+            Connection conn = agent.getConnection();
+            boolean valid = false;
+            if (conn != null) {
+                try {
+                    valid = !conn.isClosed() && conn.isValid(2);
+                } catch (Exception ignored) {
+                }
+            }
+            if (!valid) {
+                throw new IllegalStateException("Connection is not valid");
+            }
+            return Collections.singletonMap("ok", true);
+        }
         ensureLiveConnection(method);
         if (AgentProtocol.METHOD_LIST_DATABASES.equals(method)) {
             return agent.listDatabases();
@@ -135,7 +149,8 @@ public final class JsonRpcServer {
                 stringOrNull(params, "schema"),
                 new ExecuteQueryOptions(
                     intOrDefault(params, "maxRows", JdbcExecutor.DEFAULT_MAX_ROWS),
-                    intOrNull(params, "fetchSize")
+                    intOrNull(params, "fetchSize"),
+                    intOrDefault(params, "timeoutSecs", 0)
                 )
             );
         }
@@ -146,7 +161,8 @@ public final class JsonRpcServer {
                 new QueryPageOptions(
                     intOrDefault(params, "pageSize", 100),
                     intOrNull(params, "fetchSize"),
-                    intOrDefault(params, "maxRows", JdbcExecutor.DEFAULT_MAX_ROWS)
+                    intOrDefault(params, "maxRows", JdbcExecutor.DEFAULT_MAX_ROWS),
+                    intOrDefault(params, "timeoutSecs", 0)
                 )
             );
         }
@@ -246,6 +262,7 @@ public final class JsonRpcServer {
         return !AgentProtocol.METHOD_HANDSHAKE.equals(method)
             && !AgentProtocol.METHOD_CONNECT.equals(method)
             && !AgentProtocol.METHOD_TEST_CONNECTION.equals(method)
+            && !AgentProtocol.METHOD_VALIDATE_CONNECTION.equals(method)
             && !AgentProtocol.METHOD_FETCH_QUERY_PAGE.equals(method)
             && !AgentProtocol.METHOD_CLOSE_QUERY_SESSION.equals(method)
             && !AgentProtocol.METHOD_DISCONNECT.equals(method)

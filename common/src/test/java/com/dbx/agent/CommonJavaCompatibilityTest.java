@@ -90,6 +90,24 @@ class CommonJavaCompatibilityTest {
     }
 
     @Test
+    void jsonRpcServerValidatesCurrentJdbcConnection() {
+        ReconnectingAgent agent = new ReconnectingAgent();
+        JsonRpcServer server = new JsonRpcServer(agent);
+
+        server.handleRequest(
+            "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"connect\",\"params\":{\"host\":\"db.example.com\",\"port\":1521,\"database\":\"ORCL\",\"username\":\"u\",\"password\":\"p\"}}"
+        );
+        String response = server.handleRequest(
+            "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"" + AgentProtocol.METHOD_VALIDATE_CONNECTION + "\",\"params\":{}}"
+        );
+
+        JsonObject json = JsonParser.parseString(response).getAsJsonObject();
+        assertTrue(json.has("error"));
+        assertEquals(1, agent.connectCount);
+        assertEquals(1, agent.firstConnectionValidChecks);
+    }
+
+    @Test
     void jsonRpcServerSwitchesCatalogBeforeMetadataCalls() {
         CatalogSwitchAgent agent = new CatalogSwitchAgent();
         JsonRpcServer server = new JsonRpcServer(agent);

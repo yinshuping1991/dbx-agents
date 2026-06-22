@@ -500,6 +500,7 @@ public class OracleAgent extends BaseDatabaseAgent {
             this::setSchemaSQL,
             options.getMaxRows(),
             options.getFetchSize(),
+            options.getTimeoutSecs(),
             OracleAgent::stringResultValue
         );
     }

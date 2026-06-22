@@ -387,6 +387,7 @@ public final class Oracle10gAgent extends BaseDatabaseAgent {
             this::setSchemaSQL,
             options.getMaxRows(),
             options.getFetchSize(),
+            options.getTimeoutSecs(),
             this::stringResultValue
         );
     }

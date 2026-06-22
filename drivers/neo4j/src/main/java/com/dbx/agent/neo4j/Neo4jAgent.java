@@ -286,6 +286,7 @@ public class Neo4jAgent extends BaseDatabaseAgent {
             this::setSchemaSQL,
             options.getMaxRows(),
             options.getFetchSize(),
+            options.getTimeoutSecs(),
             this::stringResultValue
         );
     }

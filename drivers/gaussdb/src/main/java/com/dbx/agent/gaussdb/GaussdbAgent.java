@@ -354,6 +354,7 @@ public final class GaussdbAgent extends BaseDatabaseAgent {
             this::setSchemaSQL,
             options.getMaxRows(),
             options.getFetchSize(),
+            options.getTimeoutSecs(),
             this::getResultValue
         );
     }
