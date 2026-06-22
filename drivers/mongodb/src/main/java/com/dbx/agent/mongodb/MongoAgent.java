@@ -34,6 +34,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -47,8 +48,7 @@ import org.bson.types.ObjectId;
 
 public final class MongoAgent {
     private static final Gson GSON = new Gson();
-    private static final DateTimeFormatter DATE_FORMAT =
-        DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS").withZone(ZoneOffset.UTC);
+    private static final DateTimeFormatter DATE_FORMAT = DateTimeFormatter.ISO_INSTANT.withZone(ZoneOffset.UTC);
     private static final long JS_MAX_SAFE_INTEGER = 9_007_199_254_740_991L;
     private static MongoClient client;
 
@@ -353,10 +353,36 @@ public final class MongoAgent {
         String docJson = params.get("doc_json").getAsString();
 
         var col = c.getDatabase(database).getCollection(collection);
-        Document newDoc = Document.parse(docJson);
-        newDoc.remove("_id");
-        var result = col.replaceOne(new Document("_id", parseId(id)), newDoc);
+        Document newDoc = documentForWrite(docJson);
+        var filter = new Document("_id", parseId(id));
+        var result = isUpdateOperatorDocument(newDoc)
+            ? col.updateOne(filter, newDoc)
+            : col.replaceOne(filter, replacementDocument(newDoc));
         return Collections.singletonMap("modified_count", result.getModifiedCount());
+    }
+
+    static Document documentForWrite(String docJson) {
+        Document doc = Document.parse(docJson);
+        convertMongoShellDates(doc);
+        return doc;
+    }
+
+    private static Document replacementDocument(Document doc) {
+        Document replacement = new Document(doc);
+        replacement.remove("_id");
+        return replacement;
+    }
+
+    static boolean isUpdateOperatorDocument(Document doc) {
+        if (doc.isEmpty()) {
+            return false;
+        }
+        for (String key : doc.keySet()) {
+            if (!key.startsWith("$")) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private static Object deleteDocument(JsonObject params) {
@@ -397,7 +423,7 @@ public final class MongoAgent {
         }
         if (value instanceof java.util.Date date) {
             Instant instant = Instant.ofEpochMilli(date.getTime());
-            return DATE_FORMAT.format(instant);
+            return "ISODate(\"" + DATE_FORMAT.format(instant) + "\")";
         }
         if (value instanceof Long longValue) {
             return longValue < -JS_MAX_SAFE_INTEGER || longValue > JS_MAX_SAFE_INTEGER ? longValue.toString() : longValue;
@@ -406,6 +432,76 @@ public final class MongoAgent {
             return value;
         }
         return value.toString();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Object convertMongoShellDates(Object value) {
+        if (value instanceof Document document) {
+            for (String key : new ArrayList<>(document.keySet())) {
+                document.put(key, convertMongoShellDates(document.get(key)));
+            }
+            return document;
+        }
+        if (value instanceof List<?> values) {
+            List<Object> converted = (List<Object>) values;
+            for (int i = 0; i < converted.size(); i++) {
+                converted.set(i, convertMongoShellDates(converted.get(i)));
+            }
+            return converted;
+        }
+        if (value instanceof String text) {
+            Date date = parseMongoShellDate(text);
+            if (date == null) {
+                date = parseLegacyDateDisplay(text);
+            }
+            return date == null ? value : date;
+        }
+        return value;
+    }
+
+    static Date parseMongoShellDate(String value) {
+        String trimmed = value.trim();
+        String inner = null;
+        if (trimmed.startsWith("ISODate(") && trimmed.endsWith(")")) {
+            inner = trimmed.substring("ISODate(".length(), trimmed.length() - 1).trim();
+        } else if (trimmed.startsWith("new Date(") && trimmed.endsWith(")")) {
+            inner = trimmed.substring("new Date(".length(), trimmed.length() - 1).trim();
+        }
+        if (inner == null || inner.length() < 2) {
+            return null;
+        }
+        char quote = inner.charAt(0);
+        if ((quote != '"' && quote != '\'') || inner.charAt(inner.length() - 1) != quote) {
+            return null;
+        }
+        try {
+            Instant instant = Instant.parse(inner.substring(1, inner.length() - 1));
+            return Date.from(instant);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    static Date parseLegacyDateDisplay(String value) {
+        String trimmed = value.trim();
+        if (!trimmed.matches("\\d{4}-\\d{2}-\\d{2}[ T]\\d{2}:\\d{2}:\\d{2}(\\.\\d{1,3})?")) {
+            return null;
+        }
+        String normalized = trimmed.replace(' ', 'T');
+        int dot = normalized.indexOf('.');
+        if (dot < 0) {
+            normalized = normalized + ".000";
+        } else {
+            int millisStart = dot + 1;
+            int millisEnd = normalized.length();
+            normalized = normalized.substring(0, millisStart)
+                + String.format("%-3s", normalized.substring(millisStart, millisEnd)).replace(' ', '0');
+        }
+        try {
+            return Date.from(Instant.parse(normalized + "Z"));
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private static Object dispatch(String method, JsonObject params) {

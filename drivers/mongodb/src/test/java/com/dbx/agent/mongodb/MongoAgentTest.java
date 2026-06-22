@@ -16,6 +16,8 @@ import java.nio.file.Path;
 import java.security.KeyStore;
 import java.security.PrivateKey;
 import java.util.Base64;
+import java.util.Date;
+import org.bson.Document;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -268,6 +270,36 @@ class MongoAgentTest {
     @Test
     void convertValueKeepsSafeLongAsNumber() {
         assertEquals(42L, MongoAgent.convertValue(42L));
+    }
+
+    @Test
+    void convertValueFormatsDatesAsMongoShellIsoDate() {
+        assertEquals("ISODate(\"2026-06-10T13:59:31.287Z\")", MongoAgent.convertValue(Date.from(java.time.Instant.parse("2026-06-10T13:59:31.287Z"))));
+    }
+
+    @Test
+    void documentForWriteParsesMongoShellIsoDateStrings() {
+        Document doc = MongoAgent.documentForWrite("{\"$set\":{\"CreateDate\":\"ISODate(\\\"2026-06-10T13:59:31.287Z\\\")\"}}");
+
+        assertTrue(MongoAgent.isUpdateOperatorDocument(doc));
+        Document set = (Document) doc.get("$set");
+        assertTrue(set.get("CreateDate") instanceof Date);
+    }
+
+    @Test
+    void documentForWriteParsesNestedMongoShellIsoDateStrings() {
+        Document doc = MongoAgent.documentForWrite("{\"items\":[{\"created\":\"new Date(\\\"2026-06-10T13:59:31.287Z\\\")\"}]}");
+
+        assertTrue(((Document) ((java.util.List<?>) doc.get("items")).get(0)).get("created") instanceof Date);
+    }
+
+    @Test
+    void documentForWriteParsesLegacyDateDisplayStrings() {
+        Document doc = MongoAgent.documentForWrite("{\"$set\":{\"CreateDate\":\"2025-08-14 02:25:43.718\"}}");
+
+        Document set = (Document) doc.get("$set");
+        assertTrue(set.get("CreateDate") instanceof Date);
+        assertEquals(1_755_138_343_718L, ((Date) set.get("CreateDate")).getTime());
     }
 
     // ─── helpers ───
