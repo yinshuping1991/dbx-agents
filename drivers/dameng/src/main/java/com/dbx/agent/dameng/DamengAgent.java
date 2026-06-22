@@ -30,8 +30,10 @@ import java.sql.Types;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 
 public final class DamengAgent extends BaseDatabaseAgent {
@@ -216,7 +218,7 @@ public final class DamengAgent extends BaseDatabaseAgent {
                 stmt.setString(3, schema);
                 try (ResultSet rs = stmt.executeQuery()) {
                     if (rs.next()) {
-                        return coalesce(rs.getString(1));
+                        return appendTableAndColumnComments(coalesce(rs.getString(1)), schema, table);
                     }
                 }
             }
@@ -294,6 +296,7 @@ public final class DamengAgent extends BaseDatabaseAgent {
                     }
                 }
             }
+            fillMissingColumnComments(schema, table, result);
             return result;
         });
     }
@@ -553,6 +556,137 @@ public final class DamengAgent extends BaseDatabaseAgent {
 
     private static String coalesce(String value) {
         return value == null ? "" : value;
+    }
+
+    private void fillMissingColumnComments(String schema, String table, List<ColumnInfo> columns) {
+        if (columns.stream().noneMatch(column -> !notBlank(column.getComment()))) {
+            return;
+        }
+        Map<String, String> comments = new HashMap<>();
+        queryColumnComments(
+            comments,
+            "SELECT COLUMN_NAME, COMMENTS FROM USER_COL_COMMENTS WHERE TABLE_NAME = ?",
+            table
+        );
+        queryColumnComments(
+            comments,
+            "SELECT COLNAME, COMMENT$ FROM SYS.SYSCOLUMNCOMMENTS WHERE SCHNAME = ? AND TVNAME = ?",
+            schema,
+            table
+        );
+        queryColumnComments(
+            comments,
+            "SELECT COLUMN_NAME, COMMENTS FROM ALL_COL_COMMENTS WHERE UPPER(OWNER) = UPPER(?) AND UPPER(TABLE_NAME) = UPPER(?)",
+            schema,
+            table
+        );
+        for (ColumnInfo column : columns) {
+            if (notBlank(column.getComment())) {
+                continue;
+            }
+            String comment = comments.get(column.getName().toUpperCase(Locale.ROOT));
+            if (notBlank(comment)) {
+                column.setComment(comment);
+            }
+        }
+    }
+
+    private void queryColumnComments(Map<String, String> comments, String sql, String... params) {
+        try (PreparedStatement stmt = requireConnected().prepareStatement(sql)) {
+            for (int i = 0; i < params.length; i++) {
+                stmt.setString(i + 1, params[i]);
+            }
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    String column = rs.getString(1);
+                    String comment = rs.getString(2);
+                    if (notBlank(column) && notBlank(comment)) {
+                        comments.putIfAbsent(column.toUpperCase(Locale.ROOT), comment);
+                    }
+                }
+            }
+        } catch (Exception ignored) {
+            // Some Dameng versions or users do not expose every comment view.
+        }
+    }
+
+    private String appendTableAndColumnComments(String ddl, String schema, String table) throws Exception {
+        StringBuilder result = new StringBuilder(ddl == null ? "" : ddl.trim());
+        String tableRef = qualifiedName(schema, table);
+        String tableComment = tableComment(schema, table);
+        if (notBlank(tableComment) && !containsCommentOnTable(result.toString(), schema, table)) {
+            appendCommentStatement(result, "COMMENT ON TABLE " + tableRef + " IS '" + sqlStringBody(tableComment) + "';");
+        }
+        for (ColumnInfo column : getColumns(schema, table)) {
+            if (!notBlank(column.getComment()) || containsCommentOnColumn(result.toString(), schema, table, column.getName())) {
+                continue;
+            }
+            appendCommentStatement(result, "COMMENT ON COLUMN " + tableRef + "." + JdbcIdentifiers.INSTANCE.doubleQuote(column.getName()) + " IS '" + sqlStringBody(column.getComment()) + "';");
+        }
+        return result.toString();
+    }
+
+    private String tableComment(String schema, String table) throws Exception {
+        String sql = """
+            SELECT COMMENTS
+            FROM ALL_TAB_COMMENTS
+            WHERE OWNER = ? AND TABLE_NAME = ?
+            """.stripIndent().trim();
+        try (PreparedStatement stmt = requireConnected().prepareStatement(sql)) {
+            stmt.setString(1, schema);
+            stmt.setString(2, table);
+            try (ResultSet rs = stmt.executeQuery()) {
+                return rs.next() ? rs.getString(1) : null;
+            }
+        }
+    }
+
+    private static void appendCommentStatement(StringBuilder ddl, String statement) {
+        if (!ddl.isEmpty()) {
+            if (ddl.charAt(ddl.length() - 1) != '\n') {
+                ddl.append("\n");
+            }
+            ddl.append("\n");
+        }
+        ddl.append(statement);
+    }
+
+    private static boolean containsCommentOnTable(String ddl, String schema, String table) {
+        return normalizedDdl(ddl).contains("COMMENT ON TABLE " + normalizedQualifiedName(schema, table));
+    }
+
+    private static boolean containsCommentOnColumn(String ddl, String schema, String table, String column) {
+        return normalizedDdl(ddl).contains("COMMENT ON COLUMN " + normalizedQualifiedName(schema, table) + "." + normalizedIdentifier(column));
+    }
+
+    private static String qualifiedName(String schema, String name) {
+        if (!notBlank(schema)) {
+            return JdbcIdentifiers.INSTANCE.doubleQuote(name);
+        }
+        return JdbcIdentifiers.INSTANCE.doubleQuote(schema) + "." + JdbcIdentifiers.INSTANCE.doubleQuote(name);
+    }
+
+    private static String normalizedQualifiedName(String schema, String name) {
+        if (!notBlank(schema)) {
+            return normalizedIdentifier(name);
+        }
+        return normalizedIdentifier(schema) + "." + normalizedIdentifier(name);
+    }
+
+    private static String normalizedIdentifier(String value) {
+        return JdbcIdentifiers.INSTANCE.doubleQuote(value).toUpperCase(Locale.ROOT);
+    }
+
+    private static String normalizedDdl(String ddl) {
+        return coalesce(ddl).toUpperCase(Locale.ROOT).replaceAll("\\s+", " ");
+    }
+
+    private static boolean notBlank(String value) {
+        return value != null && !value.trim().isEmpty();
+    }
+
+    private static String sqlStringBody(String value) {
+        return value.replace("'", "''");
     }
 
     @Override

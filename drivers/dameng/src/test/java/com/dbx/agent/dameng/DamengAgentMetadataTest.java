@@ -14,6 +14,7 @@ import java.lang.reflect.Proxy;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
+import java.util.Arrays;
 import java.util.List;
 
 class DamengAgentMetadataTest {
@@ -97,22 +98,64 @@ class DamengAgentMetadataTest {
         Assertions.assertEquals("id comment", columns.get(0).getComment());
     }
 
+    @Test
+    void mapsColumnCommentFromFallbackMetadataViews() {
+        DamengAgent agent = new DamengAgent();
+        TestSupport.setPrivateConnection(agent, metadataConnection(null, "fallback id comment"));
+
+        List<ColumnInfo> columns = agent.getColumns("APP", "USERS");
+
+        Assertions.assertEquals(1, columns.size());
+        Assertions.assertEquals("fallback id comment", columns.get(0).getComment());
+    }
+
+    @Test
+    void appendsTableAndColumnCommentsToTableDdl() {
+        DamengAgent agent = new DamengAgent();
+        TestSupport.setPrivateConnection(agent, metadataConnection());
+
+        String ddl = agent.getTableDdl("APP", "USERS");
+
+        Assertions.assertTrue(ddl.contains("CREATE TABLE \"APP\".\"USERS\""), ddl);
+        Assertions.assertTrue(ddl.contains("COMMENT ON TABLE \"APP\".\"USERS\" IS '用户示例表';"), ddl);
+        Assertions.assertTrue(ddl.contains("COMMENT ON COLUMN \"APP\".\"USERS\".\"ID\" IS 'id comment';"), ddl);
+    }
+
     private static Connection metadataConnection() {
+        return metadataConnection("id comment", null);
+    }
+
+    private static Connection metadataConnection(String allColumnComment, String fallbackColumnComment) {
         return proxy(Connection.class, (method, args) -> {
             String name = method.getName();
             if ("prepareStatement".equals(name)) {
                 String sql = (String) args[0];
+                if (sql.contains("DBMS_METADATA.GET_DDL")) {
+                    return metadataStatement(List.of(List.of("CREATE TABLE \"APP\".\"USERS\" (\n  \"ID\" NUMBER\n);")));
+                }
                 if (sql.contains("ALL_CONS_COLUMNS")) {
                     return metadataStatement(List.of(List.of("ID")));
                 }
+                if (sql.startsWith("SELECT COMMENTS")) {
+                    return metadataStatement(List.of(List.of("用户示例表")));
+                }
+                if (sql.contains("USER_COL_COMMENTS")) {
+                    return metadataStatement(fallbackColumnComment == null ? List.of() : List.of(List.of("ID", fallbackColumnComment)));
+                }
+                if (sql.contains("SYSCOLUMNCOMMENTS")) {
+                    return metadataStatement(List.of());
+                }
                 if (sql.contains("ALL_TAB_COMMENTS")) {
                     return metadataStatement(List.of(List.of("USERS", "TABLE", "用户示例表")));
+                }
+                if (sql.contains("ALL_COL_COMMENTS") && !sql.contains("ALL_TAB_COLUMNS")) {
+                    return metadataStatement(List.of());
                 }
                 if (sql.contains("ALL_OBJECTS")) {
                     return metadataStatement(List.of());
                 }
                 if (sql.contains("ALL_TAB_COLUMNS")) {
-                    return metadataStatement(List.of(List.of(
+                    return metadataStatement(List.of(Arrays.asList(
                         "ID",
                         "NUMBER",
                         "N",
@@ -120,7 +163,7 @@ class DamengAgentMetadataTest {
                         Integer.valueOf(0),
                         Integer.valueOf(22),
                         Integer.valueOf(10),
-                        "id comment"
+                        allColumnComment
                     )));
                 }
             }
@@ -164,7 +207,9 @@ class DamengAgentMetadataTest {
                     case "COLUMN_NAME" -> string(rows, index[0], 0);
                     case "DATA_TYPE" -> string(rows, index[0], 1);
                     case "NULLABLE" -> string(rows, index[0], 2);
-                    case "COMMENTS" -> string(rows, index[0], 7);
+                    case "DATA_DEFAULT" -> null;
+                    case "COMMENTS", "COMMENT$" -> string(rows, index[0], rows.get(index[0]).size() - 1);
+                    case "COLNAME" -> string(rows, index[0], 0);
                     default -> null;
                 };
             }
