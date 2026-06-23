@@ -1,5 +1,9 @@
 # DBX Agents
 
+> **⚠️ This repository has been merged into the main DBX repository.**  
+> **All agent code now lives at [`dbx/agents/`](https://github.com/t8y2/dbx/tree/main/agents).**  
+> **Future development happens there. This repository is kept for reference only.**
+
 Agent drivers for [DBX](https://github.com/t8y2/dbx) — database support via JDBC and native database drivers.
 
 Each agent runs as a standalone process and communicates with DBX via stdin/stdout JSON-RPC 2.0.
